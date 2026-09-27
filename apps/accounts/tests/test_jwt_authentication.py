@@ -129,6 +129,21 @@ def test_refresh_token_cannot_be_used_as_access_token(user):
 
 
 @pytest.mark.django_db
+def test_access_token_is_rejected_by_refresh_endpoint(api_client, user):
+    access = str(RefreshToken.for_user(user).access_token)
+
+    response = api_client.post(
+        reverse("accounts:token-refresh"),
+        {"refresh": access},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "access" not in response.json()
+    assert "refresh" not in response.json()
+
+
+@pytest.mark.django_db
 def test_refresh_rotates_token_and_blacklists_previous_refresh(api_client, user):
     original_refresh = str(RefreshToken.for_user(user))
 
@@ -181,6 +196,37 @@ def test_refresh_rejects_inactive_user(api_client, user):
         {"refresh": refresh},
         format="json",
     )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_refresh_rejects_token_for_deleted_user_without_server_error(api_client, user):
+    refresh = str(RefreshToken.for_user(user))
+    user.delete()
+
+    response = api_client.post(
+        reverse("accounts:token-refresh"),
+        {"refresh": refresh},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "access" not in response.json()
+    assert "refresh" not in response.json()
+
+
+@pytest.mark.django_db
+def test_existing_access_token_rejects_user_deactivated_after_issuance(user):
+    access = str(RefreshToken.for_user(user).access_token)
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    request = APIRequestFactory().get(
+        "/protected/",
+        HTTP_AUTHORIZATION=f"Bearer {access}",
+    )
+
+    response = ProtectedTestView.as_view()(request)
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 

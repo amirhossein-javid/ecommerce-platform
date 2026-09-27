@@ -20,6 +20,7 @@ from .serializers import (
     CustomerRegistrationSerializer,
     LogoutSerializer,
     RegistrationResponseSerializer,
+    SafeTokenRefreshSerializer,
 )
 
 
@@ -152,7 +153,7 @@ class LoginView(TokenObtainPairView):
 
 @extend_schema_view(post=extend_schema(tags=["Authentication"]))
 class RefreshView(TokenRefreshView):
-    pass
+    serializer_class = SafeTokenRefreshSerializer
 
 
 class LogoutView(APIView):

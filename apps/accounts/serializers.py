@@ -4,7 +4,9 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import Address, CustomerProfile, User
@@ -142,6 +144,17 @@ class AddressSerializer(RejectInputFieldsMixin, serializers.ModelSerializer):
 
 class RegistrationResponseSerializer(serializers.Serializer):
     detail = serializers.CharField()
+
+
+class SafeTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        try:
+            return super().validate(attrs)
+        except User.DoesNotExist as exc:
+            raise AuthenticationFailed(
+                self.error_messages["no_active_account"],
+                code="no_active_account",
+            ) from exc
 
 
 class LogoutSerializer(serializers.Serializer):

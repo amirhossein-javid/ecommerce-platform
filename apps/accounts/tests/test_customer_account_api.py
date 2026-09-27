@@ -1,5 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connections, transaction
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -397,6 +400,85 @@ def test_database_constraint_remains_final_default_invariant(customer):
     with pytest.raises(IntegrityError), transaction.atomic():
         create_address(profile, title="Work", is_default=True)
 
+    assert profile.addresses.filter(is_default=True).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_first_address_creation_produces_one_default():
+    user = User.objects.create_user("concurrent@example.com", "strong-password")
+    profile = CustomerProfile.objects.create(user=user)
+    access_tokens = [
+        str(RefreshToken.for_user(user).access_token),
+        str(RefreshToken.for_user(user).access_token),
+    ]
+    barrier = Barrier(2)
+
+    def create_from_thread(title, access_token):
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        barrier.wait()
+        try:
+            return client.post(
+                reverse("account:address-list"),
+                {**ADDRESS_DATA, "title": title},
+                format="json",
+            ).status_code
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(create_from_thread, title, token)
+            for title, token in zip(("Home", "Work"), access_tokens, strict=True)
+        ]
+        response_statuses = [future.result() for future in futures]
+
+    assert response_statuses == [status.HTTP_201_CREATED, status.HTTP_201_CREATED]
+    assert profile.addresses.count() == 2
+    assert profile.addresses.filter(is_default=True).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_default_switches_preserve_single_default():
+    user = User.objects.create_user("concurrent@example.com", "strong-password")
+    profile = CustomerProfile.objects.create(user=user)
+    original_default = create_address(profile, is_default=True)
+    first_target = create_address(profile, title="Work")
+    second_target = create_address(profile, title="Parents")
+    access_tokens = [
+        str(RefreshToken.for_user(user).access_token),
+        str(RefreshToken.for_user(user).access_token),
+    ]
+    barrier = Barrier(2)
+
+    def switch_from_thread(address_id, access_token):
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        barrier.wait()
+        try:
+            return client.post(
+                reverse(
+                    "account:address-set-default",
+                    kwargs={"pk": address_id},
+                )
+            ).status_code
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(switch_from_thread, address.pk, token)
+            for address, token in zip(
+                (first_target, second_target),
+                access_tokens,
+                strict=True,
+            )
+        ]
+        response_statuses = [future.result() for future in futures]
+
+    original_default.refresh_from_db()
+    assert response_statuses == [status.HTTP_200_OK, status.HTTP_200_OK]
+    assert original_default.is_default is False
     assert profile.addresses.filter(is_default=True).count() == 1
 
 
