@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.utils.translation import gettext_lazy as _
 
 from .forms import AdminUserChangeForm, AdminUserCreationForm
-from .models import User
+from .models import CustomerProfile, User
 
 
 @admin.register(User)
@@ -48,3 +48,19 @@ class UserAdmin(DjangoUserAdmin):
             },
         ),
     )
+
+
+@admin.register(CustomerProfile)
+class CustomerProfileAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "first_name",
+        "last_name",
+        "phone_number",
+        "updated_at",
+    )
+    search_fields = ("user__email", "first_name", "last_name", "phone_number")
+    list_select_related = ("user",)
+    autocomplete_fields = ("user",)
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("user__email",)
