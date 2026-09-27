@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce}
+      POSTGRES_USER: ${POSTGRES_USER:-ecommerce}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecommerce}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: requirements/development.txt
+    command: >-
+      sh -c "python manage.py migrate &&
+      python manage.py runserver 0.0.0.0:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-development-only}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ecommerce:ecommerce@db:5432/ecommerce}
+      PYTEST_ADDOPTS: --override-ini cache_dir=/tmp/pytest_cache
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://localhost:8000/api/v1/health/')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:
