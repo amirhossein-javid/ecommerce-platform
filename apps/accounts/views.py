@@ -5,7 +5,30 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .serializers import LogoutSerializer
+from .serializers import (
+    CustomerRegistrationSerializer,
+    LogoutSerializer,
+    RegistrationResponseSerializer,
+)
+
+
+class RegistrationView(APIView):
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+
+    @extend_schema(
+        request=CustomerRegistrationSerializer,
+        responses={status.HTTP_201_CREATED: RegistrationResponseSerializer},
+        tags=["Authentication"],
+    )
+    def post(self, request):
+        serializer = CustomerRegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {"detail": "Registration successful. Please log in."},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 @extend_schema_view(post=extend_schema(tags=["Authentication"]))
