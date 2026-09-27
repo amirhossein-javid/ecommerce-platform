@@ -7,10 +7,26 @@ from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import CustomerProfile, User
+from .models import Address, CustomerProfile, User
 
 
-class CustomerRegistrationSerializer(serializers.ModelSerializer):
+class RejectInputFieldsMixin:
+    forbidden_fields = frozenset()
+
+    def to_internal_value(self, data):
+        if isinstance(data, Mapping):
+            forbidden = self.forbidden_fields.intersection(data)
+            if forbidden:
+                raise serializers.ValidationError(
+                    {field: "This field is not allowed." for field in sorted(forbidden)}
+                )
+        return super().to_internal_value(data)
+
+
+class CustomerRegistrationSerializer(
+    RejectInputFieldsMixin,
+    serializers.ModelSerializer,
+):
     email = serializers.EmailField(
         max_length=User._meta.get_field("email").max_length,
         write_only=True,
@@ -20,13 +36,15 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
     default_error_messages = {
         "email_unavailable": "Unable to register with this email address.",
     }
-    forbidden_fields = {
-        "is_staff",
-        "is_superuser",
-        "is_active",
-        "groups",
-        "user_permissions",
-    }
+    forbidden_fields = frozenset(
+        {
+            "is_staff",
+            "is_superuser",
+            "is_active",
+            "groups",
+            "user_permissions",
+        }
+    )
 
     class Meta:
         model = CustomerProfile
@@ -40,15 +58,6 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
                 "trim_whitespace": False,
             },
         }
-
-    def to_internal_value(self, data):
-        if isinstance(data, Mapping):
-            forbidden = self.forbidden_fields.intersection(data)
-            if forbidden:
-                raise serializers.ValidationError(
-                    {field: "This field is not allowed." for field in sorted(forbidden)}
-                )
-        return super().to_internal_value(data)
 
     def validate_email(self, value):
         email = User.objects.normalize_email(value)
@@ -78,6 +87,57 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
                     {"email": [self.error_messages["email_unavailable"]]}
                 ) from exc
             return CustomerProfile.objects.create(user=user, **validated_data)
+
+
+class CustomerProfileSerializer(RejectInputFieldsMixin, serializers.ModelSerializer):
+    email = serializers.EmailField(source="user.email", read_only=True)
+    forbidden_fields = frozenset(
+        {
+            "email",
+            "password",
+            "user",
+            "is_staff",
+            "is_superuser",
+            "is_active",
+            "groups",
+            "user_permissions",
+        }
+    )
+
+    class Meta:
+        model = CustomerProfile
+        fields = (
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "phone_number",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "email", "created_at", "updated_at")
+
+
+class AddressSerializer(RejectInputFieldsMixin, serializers.ModelSerializer):
+    forbidden_fields = frozenset({"customer_profile", "is_default"})
+
+    class Meta:
+        model = Address
+        fields = (
+            "id",
+            "title",
+            "recipient_first_name",
+            "recipient_last_name",
+            "recipient_phone_number",
+            "province",
+            "city",
+            "address",
+            "postal_code",
+            "is_default",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "is_default", "created_at", "updated_at")
 
 
 class RegistrationResponseSerializer(serializers.Serializer):
