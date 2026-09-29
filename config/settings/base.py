@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "apps.accounts.apps.AccountsConfig",
     "apps.common.apps.CommonConfig",
+    "apps.products.apps.ProductsConfig",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -89,6 +90,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
