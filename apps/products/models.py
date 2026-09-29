@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q
 from django.db.models.functions import Lower
 from django.utils.text import slugify
@@ -182,3 +182,97 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+def product_image_upload_to(instance, filename):
+    return f"products/{instance.product_id}/{filename}"
+
+
+class ProductImage(models.Model):
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="images",
+    )
+    image = models.ImageField(upload_to=product_image_upload_to)
+    alt_text = models.CharField(max_length=255, blank=True)
+    is_primary = models.BooleanField(default=False)
+    position = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("product",),
+                condition=Q(is_primary=True),
+                name="products_unique_primary_image_per_product",
+            ),
+            models.UniqueConstraint(
+                fields=("product", "position"),
+                name="products_unique_image_position_per_product",
+            ),
+            models.CheckConstraint(
+                condition=Q(position__gte=0),
+                name="products_product_image_position_nonnegative",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        persisted_fields = set(update_fields) if update_fields is not None else None
+        primary_is_persisted = (
+            self._state.adding
+            or persisted_fields is None
+            or "is_primary" in persisted_fields
+        )
+
+        if not primary_is_persisted or self.product_id is None:
+            return super().save(*args, **kwargs)
+
+        with transaction.atomic():
+            Product.objects.select_for_update().get(pk=self.product_id)
+            product_images = self.__class__.objects.filter(product_id=self.product_id)
+
+            if self._state.adding and not product_images.exists():
+                self.is_primary = True
+
+            if self.is_primary:
+                product_images.filter(is_primary=True).exclude(pk=self.pk).update(
+                    is_primary=False
+                )
+
+            return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.pk is None or self.product_id is None:
+            return super().delete(*args, **kwargs)
+
+        product_id = self.product_id
+        with transaction.atomic():
+            Product.objects.select_for_update().get(pk=product_id)
+            current = (
+                self.__class__.objects.filter(pk=self.pk).values("is_primary").first()
+            )
+            was_primary = current is not None and current["is_primary"]
+
+            result = super().delete(*args, **kwargs)
+
+            if was_primary:
+                replacement = (
+                    self.__class__.objects.filter(product_id=product_id)
+                    .order_by("position", "pk")
+                    .first()
+                )
+                if replacement is not None:
+                    self.__class__.objects.filter(pk=replacement.pk).update(
+                        is_primary=True
+                    )
+
+            return result
+
+    def __str__(self):
+        return f"Image for {self.product} at position {self.position}"
