@@ -1,10 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
+from threading import Barrier
 
 import pytest
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connections, transaction
 from django.utils import timezone
 
 from apps.products.models import Category, Product, ProductImage
@@ -78,6 +80,22 @@ def test_explicit_primary_change_unsets_previous_primary(product):
     assert first.is_primary is False
     assert second.is_primary is True
     assert product.images.filter(is_primary=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_full_clean_allows_primary_transition_handled_by_save(product):
+    first = build_image(product, position=0)
+    second = build_image(product, position=1)
+    first.save()
+    second.save()
+    second.is_primary = True
+
+    second.full_clean()
+    second.save(update_fields=["is_primary"])
+
+    first.refresh_from_db()
+    assert first.is_primary is False
+    assert second.is_primary is True
 
 
 @pytest.mark.django_db
@@ -268,3 +286,103 @@ def test_product_image_timestamps_are_set_and_updated(product):
 
     assert image.created_at == original_created_at
     assert image.updated_at > stale_updated_at
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_first_images_produce_one_primary():
+    category = Category.objects.create(name="Electronics")
+    product = Product.objects.create(
+        category=category,
+        name="Laptop",
+        sku="LAPTOP-001",
+        price=Decimal("1299.99"),
+    )
+    barrier = Barrier(2)
+
+    def create_from_thread(position):
+        barrier.wait()
+        try:
+            return ProductImage.objects.create(
+                product_id=product.pk,
+                image=f"fixtures/concurrent-{position}.jpg",
+                position=position,
+            ).pk
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        image_ids = list(executor.map(create_from_thread, (0, 1)))
+
+    assert ProductImage.objects.filter(pk__in=image_ids).count() == 2
+    assert product.images.filter(is_primary=True).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_primary_changes_preserve_single_primary():
+    category = Category.objects.create(name="Electronics")
+    product = Product.objects.create(
+        category=category,
+        name="Laptop",
+        sku="LAPTOP-001",
+        price=Decimal("1299.99"),
+    )
+    original = build_image(product, position=0)
+    first_target = build_image(product, position=1)
+    second_target = build_image(product, position=2)
+    original.save()
+    first_target.save()
+    second_target.save()
+    barrier = Barrier(2)
+
+    def select_from_thread(image_id):
+        image = ProductImage.objects.get(pk=image_id)
+        image.is_primary = True
+        barrier.wait()
+        try:
+            image.save(update_fields=["is_primary"])
+            return image.pk
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        selected_ids = list(
+            executor.map(select_from_thread, (first_target.pk, second_target.pk))
+        )
+
+    original.refresh_from_db()
+    assert original.is_primary is False
+    assert product.images.filter(is_primary=True).count() == 1
+    assert product.images.get(is_primary=True).pk in selected_ids
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_primary_and_replacement_deletion_promotes_remaining_image():
+    category = Category.objects.create(name="Electronics")
+    product = Product.objects.create(
+        category=category,
+        name="Laptop",
+        sku="LAPTOP-001",
+        price=Decimal("1299.99"),
+    )
+    primary = build_image(product, position=0)
+    first_replacement = build_image(product, position=1)
+    remaining = build_image(product, position=2)
+    primary.save()
+    first_replacement.save()
+    remaining.save()
+    barrier = Barrier(2)
+
+    def delete_from_thread(image_id):
+        image = ProductImage.objects.get(pk=image_id)
+        barrier.wait()
+        try:
+            image.delete()
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(delete_from_thread, (primary.pk, first_replacement.pk)))
+
+    remaining.refresh_from_db()
+    assert list(product.images.all()) == [remaining]
+    assert remaining.is_primary is True

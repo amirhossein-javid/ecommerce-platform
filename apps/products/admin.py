@@ -1,4 +1,3 @@
-from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -19,17 +18,6 @@ def image_thumbnail(image, *, alt_text="", size=56):
         size,
         size,
     )
-
-
-class ProductImageInlineForm(forms.ModelForm):
-    class Meta:
-        model = ProductImage
-        fields = "__all__"
-
-    def _get_validation_exclusions(self):
-        exclusions = super()._get_validation_exclusions()
-        exclusions.add("is_primary")
-        return exclusions
 
 
 class ProductImageInlineFormSet(BaseInlineFormSet):
@@ -65,7 +53,6 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
 
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
-    form = ProductImageInlineForm
     formset = ProductImageInlineFormSet
     extra = 1
     fields = (

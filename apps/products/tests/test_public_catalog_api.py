@@ -228,6 +228,7 @@ def test_product_list_uses_null_for_missing_primary_image(api_client, categories
 def test_product_detail_includes_description_and_ordered_images(
     api_client,
     categories,
+    django_assert_num_queries,
 ):
     category, _, _ = categories
     product = create_product(
@@ -239,9 +240,10 @@ def test_product_detail_includes_description_and_ordered_images(
     last = create_image(product, 5, alt_text="Back view")
     first = create_image(product, 1, alt_text="Front view")
 
-    response = api_client.get(
-        reverse("products:product-detail", kwargs={"slug": product.slug})
-    )
+    with django_assert_num_queries(2):
+        response = api_client.get(
+            reverse("products:product-detail", kwargs={"slug": product.slug})
+        )
 
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
@@ -415,6 +417,44 @@ def test_invalid_product_filters_return_bad_request(api_client, categories):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "query_params",
+    [
+        {"in_stock": "not-a-boolean"},
+        {"max_price": "NaN"},
+        {"min_price": "1.001"},
+    ],
+)
+def test_malformed_product_filters_fail_safely(
+    api_client,
+    categories,
+    query_params,
+):
+    category, _, _ = categories
+    create_product(category, "product")
+
+    response = api_client.get(reverse("products:product-list"), query_params)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_malformed_product_page_uses_standard_not_found_response(
+    api_client,
+    categories,
+):
+    category, _, _ = categories
+    create_product(category, "product")
+
+    response = api_client.get(
+        reverse("products:product-list"),
+        {"page": "not-a-page"},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
 def test_public_catalog_endpoints_are_read_only(api_client, categories):
     category, _, _ = categories
     product = create_product(category, "product")
@@ -476,3 +516,27 @@ def test_openapi_schema_documents_public_catalog_endpoints_and_filters(api_clien
         "page",
         "page_size",
     } <= product_parameters
+
+    for path in expected_paths:
+        assert schema["paths"][path]["get"]["security"] == [{}]
+
+    schemas = schema["components"]["schemas"]
+    assert set(schemas["ProductList"]["properties"]) == {
+        "id",
+        "name",
+        "slug",
+        "category",
+        "price",
+        "in_stock",
+        "primary_image",
+    }
+    assert set(schemas["ProductDetail"]["properties"]) == {
+        "id",
+        "name",
+        "slug",
+        "category",
+        "description",
+        "price",
+        "in_stock",
+        "images",
+    }

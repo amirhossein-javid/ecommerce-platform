@@ -221,6 +221,13 @@ class ProductImage(models.Model):
             ),
         ]
 
+    def validate_constraints(self, exclude=None):
+        exclusions = set(exclude or ())
+        if self.is_primary:
+            # Saving a primary image transactionally replaces the current primary.
+            exclusions.add("is_primary")
+        return super().validate_constraints(exclude=exclusions)
+
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
         persisted_fields = set(update_fields) if update_fields is not None else None
