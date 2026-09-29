@@ -1,6 +1,10 @@
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Q
+from django.db.models.functions import Lower
 from django.utils.text import slugify
 
 
@@ -87,6 +91,93 @@ class Category(models.Model):
                 self.__class__.objects.filter(pk=ancestor_id)
                 .values_list("parent_id", flat=True)
                 .first()
+            )
+
+    def __str__(self):
+        return self.name
+
+
+class Product(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        ACTIVE = "ACTIVE", "Active"
+        ARCHIVED = "ARCHIVED", "Archived"
+
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="products",
+    )
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(
+        max_length=255,
+        unique=True,
+        blank=True,
+        allow_unicode=True,
+    )
+    sku = models.CharField(max_length=64, unique=True)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    stock_quantity = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+    )
+    status = models.CharField(
+        max_length=8,
+        choices=Status,
+        default=Status.DRAFT,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower("sku"),
+                name="products_product_sku_ci_unique",
+            ),
+            models.CheckConstraint(
+                condition=Q(price__gt=0),
+                name="products_product_price_gt_zero",
+            ),
+            models.CheckConstraint(
+                condition=Q(stock_quantity__gte=0),
+                name="products_product_stock_nonnegative",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        self._set_slug_if_missing()
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        persisted_fields = set(update_fields) if update_fields is not None else None
+        slug_is_persisted = (
+            self._state.adding or persisted_fields is None or "slug" in persisted_fields
+        )
+
+        if slug_is_persisted:
+            self._set_slug_if_missing()
+            try:
+                self._meta.get_field("slug").run_validators(self.slug)
+            except ValidationError as error:
+                raise ValidationError({"slug": error.error_list}) from error
+
+        return super().save(*args, **kwargs)
+
+    def _set_slug_if_missing(self):
+        if self.slug:
+            return
+
+        self.slug = slugify(self.name, allow_unicode=True)
+        if not self.slug:
+            raise ValidationError(
+                {"slug": "A slug could not be generated from this name."}
             )
 
     def __str__(self):
