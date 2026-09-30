@@ -1,7 +1,9 @@
 from django.db.models import Prefetch
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound
+from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,6 +16,8 @@ from .serializers import (
     CheckoutOrderSerializer,
     CheckoutRequestSerializer,
     CheckoutValidationErrorSerializer,
+    CustomerOrderDetailSerializer,
+    CustomerOrderListSerializer,
 )
 from .services import (
     CheckoutAddressUnavailable,
@@ -35,6 +39,66 @@ def _checkout_order_queryset():
             to_attr="prefetched_inventory_reservations",
         ),
     )
+
+
+class CustomerOrderPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class CustomerOrderMixin:
+    permission_classes = (IsAuthenticated,)
+
+    def get_customer_profile(self):
+        try:
+            return CustomerProfile.objects.get(user=self.request.user)
+        except CustomerProfile.DoesNotExist as exc:
+            raise NotFound("Customer profile not found.") from exc
+
+    def get_queryset(self):
+        return Order.objects.filter(customer=self.get_customer_profile())
+
+
+@extend_schema_view(
+    get=extend_schema(
+        responses={
+            status.HTTP_200_OK: CustomerOrderListSerializer(many=True),
+            status.HTTP_401_UNAUTHORIZED: CheckoutErrorSerializer,
+            status.HTTP_404_NOT_FOUND: CheckoutErrorSerializer,
+        },
+        tags=["Orders"],
+    )
+)
+class CustomerOrderListView(CustomerOrderMixin, ListAPIView):
+    serializer_class = CustomerOrderListSerializer
+    pagination_class = CustomerOrderPagination
+
+    def get_queryset(self):
+        return super().get_queryset().order_by("-created_at", "-pk")
+
+
+@extend_schema_view(
+    get=extend_schema(
+        responses={
+            status.HTTP_200_OK: CustomerOrderDetailSerializer,
+            status.HTTP_401_UNAUTHORIZED: CheckoutErrorSerializer,
+            status.HTTP_404_NOT_FOUND: CheckoutErrorSerializer,
+        },
+        tags=["Orders"],
+    )
+)
+class CustomerOrderDetailView(CustomerOrderMixin, RetrieveAPIView):
+    serializer_class = CustomerOrderDetailSerializer
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .prefetch_related(
+                Prefetch("items", queryset=OrderItem.objects.order_by("pk"))
+            )
+        )
 
 
 class CheckoutView(APIView):

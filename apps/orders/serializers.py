@@ -70,3 +70,59 @@ class CheckoutValidationErrorSerializer(serializers.Serializer):
 
 class CheckoutErrorSerializer(serializers.Serializer):
     detail = serializers.CharField()
+
+
+class CustomerOrderListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = (
+            "id",
+            "status",
+            "subtotal",
+            "discount_total",
+            "shipping_total",
+            "grand_total",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+
+class CustomerOrderItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderItem
+        fields = (
+            "product_name",
+            "sku",
+            "unit_price",
+            "quantity",
+            "line_total",
+        )
+        read_only_fields = fields
+
+
+class CustomerOrderDetailSerializer(serializers.ModelSerializer):
+    items = CustomerOrderItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Order
+        fields = (
+            "id",
+            "status",
+            "subtotal",
+            "discount_total",
+            "shipping_total",
+            "grand_total",
+            "shipping_title",
+            "shipping_recipient_first_name",
+            "shipping_recipient_last_name",
+            "shipping_recipient_phone_number",
+            "shipping_province",
+            "shipping_city",
+            "shipping_address",
+            "shipping_postal_code",
+            "items",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
