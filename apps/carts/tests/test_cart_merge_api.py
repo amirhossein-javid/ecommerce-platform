@@ -281,16 +281,16 @@ def test_merge_uses_current_price_and_does_not_change_stock(
     product = create_product(category, "current-price", price="8.00")
     guest_cart = Cart.objects.create()
     CartItem.objects.create(cart=guest_cart, product=product, quantity=2)
-    product.price = Decimal("11.50")
+    product.price = Decimal("11.00")
     product.save(update_fields=("price",))
     api_client.force_authenticate(user=customer.user)
 
     response = merge(api_client, guest_cart.token)
 
     data = response.json()
-    assert data["items"][0]["product"]["price"] == "11.50"
-    assert data["items"][0]["line_total"] == "23.00"
-    assert data["subtotal"] == "23.00"
+    assert data["items"][0]["product"]["price"] == "11"
+    assert data["items"][0]["line_total"] == "22"
+    assert data["subtotal"] == "22"
     product.refresh_from_db()
     assert product.stock_quantity == 10
 

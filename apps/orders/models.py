@@ -9,6 +9,7 @@ from apps.accounts.validators import (
     validate_e164_phone_number,
     validate_iran_postal_code,
 )
+from apps.common.money import validate_whole_rial
 from apps.products.models import Product
 
 
@@ -35,24 +36,24 @@ class Order(models.Model):
     subtotal = models.DecimalField(
         max_digits=24,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.00"))],
+        validators=[MinValueValidator(Decimal("0.00")), validate_whole_rial],
     )
     discount_total = models.DecimalField(
         max_digits=24,
         decimal_places=2,
         default=Decimal("0.00"),
-        validators=[MinValueValidator(Decimal("0.00"))],
+        validators=[MinValueValidator(Decimal("0.00")), validate_whole_rial],
     )
     shipping_total = models.DecimalField(
         max_digits=24,
         decimal_places=2,
         default=Decimal("0.00"),
-        validators=[MinValueValidator(Decimal("0.00"))],
+        validators=[MinValueValidator(Decimal("0.00")), validate_whole_rial],
     )
     grand_total = models.DecimalField(
         max_digits=24,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.00"))],
+        validators=[MinValueValidator(Decimal("0.00")), validate_whole_rial],
     )
     shipping_title = models.CharField(max_length=50, blank=True)
     shipping_recipient_first_name = models.CharField(max_length=150)
@@ -104,6 +105,22 @@ class Order(models.Model):
                 name="orders_order_grand_total_nonnegative",
             ),
             models.CheckConstraint(
+                condition=Q(subtotal=models.functions.Floor("subtotal")),
+                name="orders_order_subtotal_whole_irr",
+            ),
+            models.CheckConstraint(
+                condition=Q(discount_total=models.functions.Floor("discount_total")),
+                name="orders_order_discount_whole_irr",
+            ),
+            models.CheckConstraint(
+                condition=Q(shipping_total=models.functions.Floor("shipping_total")),
+                name="orders_order_shipping_whole_irr",
+            ),
+            models.CheckConstraint(
+                condition=Q(grand_total=models.functions.Floor("grand_total")),
+                name="orders_order_grand_whole_irr",
+            ),
+            models.CheckConstraint(
                 condition=Q(
                     grand_total=F("subtotal")
                     - F("discount_total")
@@ -141,13 +158,13 @@ class OrderItem(models.Model):
     unit_price = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.00"))],
+        validators=[MinValueValidator(Decimal("0.00")), validate_whole_rial],
     )
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     line_total = models.DecimalField(
         max_digits=22,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.00"))],
+        validators=[MinValueValidator(Decimal("0.00")), validate_whole_rial],
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -165,6 +182,14 @@ class OrderItem(models.Model):
             models.CheckConstraint(
                 condition=Q(line_total__gte=0),
                 name="orders_item_line_total_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=Q(unit_price=models.functions.Floor("unit_price")),
+                name="orders_item_unit_price_whole_irr",
+            ),
+            models.CheckConstraint(
+                condition=Q(line_total=models.functions.Floor("line_total")),
+                name="orders_item_line_total_whole_irr",
             ),
             models.CheckConstraint(
                 condition=Q(line_total=F("unit_price") * F("quantity")),

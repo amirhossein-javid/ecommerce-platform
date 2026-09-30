@@ -33,7 +33,7 @@ def create_attempt(order, reference, **overrides):
     values = {
         "order": order,
         "amount": order.grand_total,
-        "currency": "USD",
+        "currency": "IRR",
         "gateway": "test",
         "gateway_reference": reference,
         "payment_url": f"https://payments.example/{reference}",
@@ -48,7 +48,7 @@ def test_payment_attempt_snapshots_amount_currency_and_defaults(order):
 
     assert attempt.status == PaymentAttempt.Status.PENDING
     assert attempt.amount == Decimal("25.00")
-    assert attempt.currency == "USD"
+    assert attempt.currency == "IRR"
     assert attempt.created_at is not None
     assert str(attempt) == (
         f"Payment attempt {attempt.pk} for order {order.pk} (PENDING)"
@@ -102,7 +102,8 @@ def test_uninitialized_pending_attempt_has_stable_unique_idempotency_key(order):
     ("overrides", "reference"),
     [
         ({"status": "UNKNOWN"}, "invalid-status"),
-        ({"amount": Decimal("-0.01")}, "negative-amount"),
+        ({"amount": Decimal("-1.00")}, "negative-amount"),
+        ({"amount": Decimal("24.50")}, "fractional-rial-amount"),
         ({"currency": "EUR"}, "invalid-currency"),
         ({"gateway": ""}, "empty-gateway"),
         ({"gateway_reference": ""}, "ignored"),

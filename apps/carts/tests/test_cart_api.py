@@ -27,7 +27,7 @@ def product(category):
         name="Shopping product",
         slug="shopping-product",
         sku="SHOPPING-PRODUCT",
-        price=Decimal("12.50"),
+        price=Decimal("12.00"),
         stock_quantity=10,
         status=Product.Status.ACTIVE,
     )
@@ -60,7 +60,7 @@ def test_guest_get_without_token_is_empty_and_creates_no_cart(api_client):
     response = api_client.get(reverse("carts:cart-detail"))
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"items": [], "subtotal": "0.00"}
+    assert response.json() == {"items": [], "subtotal": "0"}
     assert "X-Cart-Token" not in response
     assert Cart.objects.count() == 0
 
@@ -216,7 +216,7 @@ def test_authenticated_request_ignores_guest_token(api_client, product):
         **token_headers(guest_cart),
     )
 
-    assert response.json() == {"items": [], "subtotal": "0.00"}
+    assert response.json() == {"items": [], "subtotal": "0"}
     assert delete_response.status_code == status.HTTP_404_NOT_FOUND
     assert CartItem.objects.filter(pk=guest_item.pk).exists()
 
@@ -253,7 +253,7 @@ def test_authenticated_get_does_not_create_empty_cart(api_client):
     response = api_client.get(reverse("carts:cart-detail"))
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"items": [], "subtotal": "0.00"}
+    assert response.json() == {"items": [], "subtotal": "0"}
     assert customer.carts.exists() is False
 
 
@@ -456,7 +456,7 @@ def test_cart_uses_current_prices_for_lines_and_subtotal(api_client, category):
         name="Second price",
         slug="second-price",
         sku="SECOND-PRICE",
-        price=Decimal("3.50"),
+        price=Decimal("3.00"),
         stock_quantity=10,
         status=Product.Status.ACTIVE,
     )
@@ -472,10 +472,10 @@ def test_cart_uses_current_prices_for_lines_and_subtotal(api_client, category):
     )
 
     data = response.json()
-    assert data["items"][0]["product"]["price"] == "12.00"
-    assert data["items"][0]["line_total"] == "24.00"
-    assert data["items"][1]["line_total"] == "10.50"
-    assert data["subtotal"] == "34.50"
+    assert data["items"][0]["product"]["price"] == "12"
+    assert data["items"][0]["line_total"] == "24"
+    assert data["items"][1]["line_total"] == "9"
+    assert data["subtotal"] == "33"
 
 
 @pytest.mark.django_db

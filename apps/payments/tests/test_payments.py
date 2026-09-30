@@ -68,7 +68,7 @@ class FakeGateway:
             status=self.verification_status,
             gateway_reference=gateway_reference,
             amount=Decimal("25.00"),
-            currency="USD",
+            currency="IRR",
         )
 
 
@@ -114,7 +114,7 @@ def payable_order(customer):
         name="Payable product",
         slug=f"payable-{uuid4()}",
         sku=f"PAY-{uuid4()}",
-        price=Decimal("12.50"),
+        price=Decimal("12.00"),
         stock_quantity=10,
         status=Product.Status.ACTIVE,
     )
@@ -255,17 +255,17 @@ def test_initiation_uses_authoritative_total_and_does_not_expose_gateway_referen
     assert response.status_code == status.HTTP_201_CREATED
     attempt = PaymentAttempt.objects.get(pk=response.json()["id"])
     assert attempt.amount == order.grand_total == Decimal("25.00")
-    assert attempt.currency == "USD"
+    assert attempt.currency == "IRR"
     assert len(gateway.initiations) == 1
     initiated_order, initiated_amount, initiated_currency, key = gateway.initiations[0]
     assert (initiated_order, initiated_amount, initiated_currency) == (
         order.pk,
         Decimal("25.00"),
-        "USD",
+        "IRR",
     )
     assert key == attempt.idempotency_key
-    assert response.json()["amount"] == "25.00"
-    assert response.json()["currency"] == "USD"
+    assert response.json()["amount"] == "25"
+    assert response.json()["currency"] == "IRR"
     assert "gateway" not in response.json()
     assert "gateway_reference" not in response.json()
 
@@ -450,7 +450,7 @@ def test_expired_initiation_expires_order_releases_reservation_and_fails_pending
     pending = PaymentAttempt.objects.create(
         order=order,
         amount=order.grand_total,
-        currency="USD",
+        currency="IRR",
         gateway=gateway.name,
         gateway_reference="existing-expired",
         payment_url="https://payments.example/existing-expired",
@@ -518,7 +518,7 @@ def test_verification_rejects_mismatched_verified_amount_without_mutation(
     original_verify = gateway.verify
 
     def wrong_amount(**kwargs):
-        return replace(original_verify(**kwargs), amount=Decimal("24.99"))
+        return replace(original_verify(**kwargs), amount=Decimal("24.00"))
 
     monkeypatch.setattr(gateway, "verify", wrong_amount)
 

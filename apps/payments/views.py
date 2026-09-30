@@ -62,7 +62,7 @@ class PaymentInitiationView(CustomerPaymentMixin, APIView):
         },
         description=(
             "Initiate payment for an owned pending-payment order. The amount and "
-            "USD currency are copied from the authoritative order. Repeated calls "
+            "IRR currency are copied from the authoritative order. Repeated calls "
             "return the existing pending attempt."
         ),
         tags=["Payments"],

@@ -31,7 +31,7 @@ def product(db):
         category=category,
         name="Laptop",
         sku="LAPTOP-001",
-        price=Decimal("1299.99"),
+        price=Decimal("1299.00"),
     )
 
 

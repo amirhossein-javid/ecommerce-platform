@@ -46,7 +46,7 @@ def category(db):
 
 @pytest.fixture
 def product(category):
-    return create_product(category, "checkout-product", price="12.50")
+    return create_product(category, "checkout-product", price="12.00")
 
 
 def create_customer(email):
@@ -358,7 +358,7 @@ def test_checkout_uses_current_prices_and_server_calculated_totals(
     category,
 ):
     first = create_product(category, "first-price", price="10.00")
-    second = create_product(category, "second-price", price="3.50")
+    second = create_product(category, "second-price", price="3.00")
     cart = create_cart(customer, [(first, 2), (second, 3)])
     first.price = Decimal("12.00")
     first.save(update_fields=("price",))
@@ -376,11 +376,11 @@ def test_checkout_uses_current_prices_and_server_calculated_totals(
 
     data = response.json()
     assert response.status_code == status.HTTP_201_CREATED
-    assert data["subtotal"] == "34.50"
-    assert data["discount_total"] == "0.00"
-    assert data["shipping_total"] == "0.00"
-    assert data["grand_total"] == "34.50"
-    assert [item["line_total"] for item in data["items"]] == ["24.00", "10.50"]
+    assert data["subtotal"] == "33"
+    assert data["discount_total"] == "0"
+    assert data["shipping_total"] == "0"
+    assert data["grand_total"] == "33"
+    assert [item["line_total"] for item in data["items"]] == ["24", "9"]
     cart.refresh_from_db()
     assert cart.status == Cart.Status.CONVERTED
 
@@ -395,7 +395,7 @@ def test_checkout_supports_totals_from_valid_product_price_and_stock_ranges(
     product = create_product(
         category,
         "large-valid-total",
-        price="9999999999.99",
+        price="9999999999.00",
         stock_quantity=10000,
     )
     create_cart(customer, [(product, 10000)])
@@ -404,8 +404,8 @@ def test_checkout_supports_totals_from_valid_product_price_and_stock_ranges(
     response = checkout(api_client)
 
     assert response.status_code == status.HTTP_201_CREATED
-    assert response.json()["subtotal"] == "99999999999900.00"
-    assert response.json()["items"][0]["line_total"] == "99999999999900.00"
+    assert response.json()["subtotal"] == "99999999990000"
+    assert response.json()["items"][0]["line_total"] == "99999999990000"
 
 
 @pytest.mark.django_db
@@ -433,7 +433,7 @@ def test_checkout_preserves_product_and_address_snapshots(
 
     assert item.product_name == "Checkout Product"
     assert item.sku == "CHECKOUT-PRODUCT"
-    assert item.unit_price == Decimal("12.50")
+    assert item.unit_price == Decimal("12.00")
     assert order.shipping_city == "تهران"
     assert order.shipping_address == "نشانی Default"
 

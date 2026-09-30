@@ -146,10 +146,10 @@ def test_order_timestamp_updates_without_changing_creation_time(customer, addres
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("subtotal", Decimal("-0.01")),
-        ("discount_total", Decimal("-0.01")),
-        ("shipping_total", Decimal("-0.01")),
-        ("grand_total", Decimal("-0.01")),
+        ("subtotal", Decimal("-1.00")),
+        ("discount_total", Decimal("-1.00")),
+        ("shipping_total", Decimal("-1.00")),
+        ("grand_total", Decimal("-1.00")),
     ],
 )
 def test_negative_order_money_fails_model_validation(
@@ -196,6 +196,35 @@ def test_totals_do_not_assume_future_discount_scope(customer, address):
 @pytest.mark.django_db
 def test_database_rejects_inconsistent_grand_total(customer, address):
     order = build_order(customer, address, grand_total=Decimal("96.00"))
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        order.save()
+
+
+@pytest.mark.django_db
+def test_fractional_rial_order_total_fails_model_validation(customer, address):
+    order = build_order(
+        customer,
+        address,
+        subtotal=Decimal("100.50"),
+        grand_total=Decimal("95.50"),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        order.full_clean()
+
+    assert "subtotal" in exc_info.value.message_dict
+    assert "grand_total" in exc_info.value.message_dict
+
+
+@pytest.mark.django_db
+def test_fractional_rial_order_total_is_rejected_by_database(customer, address):
+    order = build_order(
+        customer,
+        address,
+        subtotal=Decimal("100.50"),
+        grand_total=Decimal("95.50"),
+    )
 
     with pytest.raises(IntegrityError), transaction.atomic():
         order.save()
@@ -322,7 +351,28 @@ def test_database_rejects_inconsistent_line_total(customer, address, product):
             sku=product.sku,
             unit_price=Decimal("25.00"),
             quantity=2,
-            line_total=Decimal("49.99"),
+            line_total=Decimal("49.00"),
+        )
+
+
+@pytest.mark.django_db
+def test_fractional_rial_order_item_is_rejected_by_database(
+    customer,
+    address,
+    product,
+):
+    order = build_order(customer, address)
+    order.save()
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            product_name=product.name,
+            sku=product.sku,
+            unit_price=Decimal("25.50"),
+            quantity=2,
+            line_total=Decimal("51.00"),
         )
 
 

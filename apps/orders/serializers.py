@@ -9,6 +9,17 @@ class CheckoutRequestSerializer(serializers.Serializer):
 
 
 class CheckoutOrderItemSerializer(serializers.ModelSerializer):
+    unit_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        read_only=True,
+    )
+    line_total = serializers.DecimalField(
+        max_digits=20,
+        decimal_places=0,
+        read_only=True,
+    )
+
     class Meta:
         model = OrderItem
         fields = (
@@ -23,6 +34,26 @@ class CheckoutOrderItemSerializer(serializers.ModelSerializer):
 
 
 class CheckoutOrderSerializer(serializers.ModelSerializer):
+    subtotal = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    discount_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    shipping_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    grand_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
     items = CheckoutOrderItemSerializer(many=True, read_only=True)
     payment_expires_at = serializers.SerializerMethodField()
 
@@ -73,6 +104,27 @@ class CheckoutErrorSerializer(serializers.Serializer):
 
 
 class CustomerOrderListSerializer(serializers.ModelSerializer):
+    subtotal = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    discount_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    shipping_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    grand_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+
     class Meta:
         model = Order
         fields = (
@@ -89,6 +141,17 @@ class CustomerOrderListSerializer(serializers.ModelSerializer):
 
 
 class CustomerOrderItemSerializer(serializers.ModelSerializer):
+    unit_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        read_only=True,
+    )
+    line_total = serializers.DecimalField(
+        max_digits=20,
+        decimal_places=0,
+        read_only=True,
+    )
+
     class Meta:
         model = OrderItem
         fields = (
@@ -102,6 +165,26 @@ class CustomerOrderItemSerializer(serializers.ModelSerializer):
 
 
 class CustomerOrderDetailSerializer(serializers.ModelSerializer):
+    subtotal = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    discount_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    shipping_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
+    grand_total = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
     items = CustomerOrderItemSerializer(many=True, read_only=True)
 
     class Meta:

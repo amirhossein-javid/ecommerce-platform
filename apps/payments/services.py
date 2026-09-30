@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 
+from apps.common.money import STORE_CURRENCY
 from apps.orders.models import InventoryReservation, Order
 from apps.products.models import Product
 
@@ -205,7 +206,7 @@ def _prepare_payment_attempt(*, order, gateway_name, at=None):
                 attempt = PaymentAttempt.objects.create(
                     order=locked_order,
                     amount=locked_order.grand_total,
-                    currency="USD",
+                    currency=STORE_CURRENCY,
                     gateway=gateway_name,
                 )
 

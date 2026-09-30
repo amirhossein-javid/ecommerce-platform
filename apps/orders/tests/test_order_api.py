@@ -50,9 +50,9 @@ def create_order_item(order, *, product=None):
         product=product,
         product_name="Historical Product",
         sku="HISTORICAL-SKU",
-        unit_price=Decimal("12.50"),
+        unit_price=Decimal("12.00"),
         quantity=2,
-        line_total=Decimal("25.00"),
+        line_total=Decimal("24.00"),
     )
 
 
@@ -138,9 +138,9 @@ def test_order_detail_returns_snapshots_without_inventory_data(
         {
             "product_name": "Historical Product",
             "sku": "HISTORICAL-SKU",
-            "unit_price": "12.50",
+            "unit_price": "12",
             "quantity": 2,
-            "line_total": "25.00",
+            "line_total": "24",
         }
     ]
     assert "inventory_reservations" not in data

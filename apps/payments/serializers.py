@@ -8,6 +8,11 @@ class PaymentInitiationRequestSerializer(serializers.Serializer):
 
 
 class PaymentAttemptSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(
+        max_digits=22,
+        decimal_places=0,
+        read_only=True,
+    )
     payment_url = serializers.URLField(read_only=True, allow_null=True)
 
     class Meta:

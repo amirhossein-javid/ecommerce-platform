@@ -10,6 +10,11 @@ from .models import CartItem
 
 
 class CartProductSerializer(serializers.ModelSerializer):
+    price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        read_only=True,
+    )
     primary_image = serializers.SerializerMethodField()
 
     class Meta:
@@ -43,9 +48,9 @@ class CartItemSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
-    @extend_schema_field(serializers.DecimalField(max_digits=40, decimal_places=2))
+    @extend_schema_field(serializers.DecimalField(max_digits=20, decimal_places=0))
     def get_line_total(self, obj):
-        return format(obj.product.price * obj.quantity, ".2f")
+        return format(obj.product.price * obj.quantity, ".0f")
 
     @extend_schema_field(serializers.BooleanField())
     def get_is_available(self, obj):
@@ -87,13 +92,13 @@ class CartSerializer(serializers.Serializer):
             context=self.context,
         ).data
 
-    @extend_schema_field(serializers.DecimalField(max_digits=40, decimal_places=2))
+    @extend_schema_field(serializers.DecimalField(max_digits=22, decimal_places=0))
     def get_subtotal(self, obj):
         subtotal = sum(
             (item.product.price * item.quantity for item in self._items(obj)),
-            start=Decimal("0.00"),
+            start=Decimal("0"),
         )
-        return format(subtotal, ".2f")
+        return format(subtotal, ".0f")
 
 
 class AddCartItemSerializer(serializers.Serializer):

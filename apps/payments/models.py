@@ -5,6 +5,8 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 
+from apps.common.money import STORE_CURRENCY, validate_whole_rial
+
 
 class PaymentAttempt(models.Model):
     class Status(models.TextChoices):
@@ -25,9 +27,9 @@ class PaymentAttempt(models.Model):
     amount = models.DecimalField(
         max_digits=24,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.00"))],
+        validators=[MinValueValidator(Decimal("0.00")), validate_whole_rial],
     )
-    currency = models.CharField(max_length=3, default="USD")
+    currency = models.CharField(max_length=3, default=STORE_CURRENCY)
     idempotency_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     gateway = models.CharField(max_length=50)
     gateway_reference = models.CharField(max_length=255, null=True, blank=True)
@@ -55,8 +57,12 @@ class PaymentAttempt(models.Model):
                 name="payments_attempt_amount_gte_0",
             ),
             models.CheckConstraint(
-                condition=Q(currency="USD"),
-                name="payments_attempt_currency_usd",
+                condition=Q(amount=models.functions.Floor("amount")),
+                name="payments_attempt_amount_whole_irr",
+            ),
+            models.CheckConstraint(
+                condition=Q(currency=STORE_CURRENCY),
+                name="payments_attempt_currency_irr",
             ),
             models.CheckConstraint(
                 condition=~Q(gateway=""),

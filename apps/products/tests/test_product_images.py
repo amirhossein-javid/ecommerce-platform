@@ -25,7 +25,7 @@ def product(db):
         category=category,
         name="Laptop",
         sku="LAPTOP-001",
-        price=Decimal("1299.99"),
+        price=Decimal("1299.00"),
     )
 
 
@@ -195,7 +195,7 @@ def test_same_position_is_allowed_for_different_products(product):
         category=product.category,
         name="Phone",
         sku="PHONE-001",
-        price=Decimal("799.99"),
+        price=Decimal("799.00"),
     )
 
     build_image(product, position=0).save()
@@ -295,7 +295,7 @@ def test_concurrent_first_images_produce_one_primary():
         category=category,
         name="Laptop",
         sku="LAPTOP-001",
-        price=Decimal("1299.99"),
+        price=Decimal("1299.00"),
     )
     barrier = Barrier(2)
 
@@ -324,7 +324,7 @@ def test_concurrent_primary_changes_preserve_single_primary():
         category=category,
         name="Laptop",
         sku="LAPTOP-001",
-        price=Decimal("1299.99"),
+        price=Decimal("1299.00"),
     )
     original = build_image(product, position=0)
     first_target = build_image(product, position=1)
@@ -362,7 +362,7 @@ def test_concurrent_primary_and_replacement_deletion_promotes_remaining_image():
         category=category,
         name="Laptop",
         sku="LAPTOP-001",
-        price=Decimal("1299.99"),
+        price=Decimal("1299.00"),
     )
     primary = build_image(product, position=0)
     first_replacement = build_image(product, position=1)
