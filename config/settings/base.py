@@ -124,3 +124,12 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
+
+PAYMENT_GATEWAY_CLASS = env(
+    "PAYMENT_GATEWAY_CLASS",
+    default="apps.payments.gateways.UnavailablePaymentGateway",
+)
+BALE_BOT_TOKEN = env("BALE_BOT_TOKEN", default="")
+BALE_PROVIDER_TOKEN = env("BALE_PROVIDER_TOKEN", default="")
+BALE_CONNECT_TIMEOUT = env.float("BALE_CONNECT_TIMEOUT", default=3.0)
+BALE_READ_TIMEOUT = env.float("BALE_READ_TIMEOUT", default=10.0)

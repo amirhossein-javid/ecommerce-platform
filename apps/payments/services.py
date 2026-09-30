@@ -39,9 +39,9 @@ def initiate_order_payment(*, order, at=None, gateway=None):
     )
     if attempt.gateway != gateway.name:
         raise PaymentVerificationInvalid("The payment gateway does not match.")
-    if attempt.gateway_reference and attempt.payment_url:
+    if attempt.gateway_reference:
         return attempt, attempt.payment_url, created
-    if attempt.gateway_reference or attempt.payment_url:
+    if attempt.payment_url:
         raise PaymentVerificationInvalid("Payment initiation state is incomplete.")
 
     initiation = gateway.initiate(
@@ -50,7 +50,7 @@ def initiate_order_payment(*, order, at=None, gateway=None):
         currency=attempt.currency,
         idempotency_key=attempt.idempotency_key,
     )
-    if not initiation.gateway_reference or not initiation.payment_url:
+    if not initiation.gateway_reference:
         raise PaymentVerificationInvalid(
             "The gateway returned invalid payment initiation data."
         )

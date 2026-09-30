@@ -24,7 +24,7 @@ class VerificationStatus(StrEnum):
 @dataclass(frozen=True)
 class PaymentInitiation:
     gateway_reference: str
-    payment_url: str
+    payment_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,22 @@ class PaymentVerification:
     gateway_reference: str
     amount: Decimal | None = None
     currency: str | None = None
+
+
+class TransactionStatus(StrEnum):
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True)
+class PaymentTransaction:
+    transaction_id: str
+    status: TransactionStatus
+    amount: Decimal
+    user_id: int
+    created_at: int
 
 
 class PaymentGateway(Protocol):
