@@ -205,6 +205,36 @@ def test_merge_adds_overlapping_quantities(api_client, customer, category):
 
 
 @pytest.mark.django_db
+def test_merge_preserves_combined_quantity_beyond_integer_range(
+    customer,
+    category,
+):
+    product = create_product(
+        category,
+        "large-overlap",
+        stock_quantity=2_000_000_000,
+    )
+    customer_cart = Cart.objects.create(customer=customer)
+    guest_cart = Cart.objects.create()
+    customer_item = CartItem.objects.create(
+        cart=customer_cart,
+        product=product,
+        quantity=1_500_000_000,
+    )
+    CartItem.objects.create(
+        cart=guest_cart,
+        product=product,
+        quantity=1_500_000_000,
+    )
+
+    merge_guest_cart(customer=customer, guest_token=guest_cart.token)
+
+    customer_item.refresh_from_db()
+    assert customer_item.quantity == 3_000_000_000
+    assert Cart.objects.filter(pk=guest_cart.pk).exists() is False
+
+
+@pytest.mark.django_db
 def test_merge_above_stock_preserves_quantity_and_reports_it(
     api_client,
     customer,

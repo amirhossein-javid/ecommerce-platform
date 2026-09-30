@@ -43,7 +43,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
-    @extend_schema_field(serializers.DecimalField(max_digits=30, decimal_places=2))
+    @extend_schema_field(serializers.DecimalField(max_digits=40, decimal_places=2))
     def get_line_total(self, obj):
         return format(obj.product.price * obj.quantity, ".2f")
 
@@ -87,7 +87,7 @@ class CartSerializer(serializers.Serializer):
             context=self.context,
         ).data
 
-    @extend_schema_field(serializers.DecimalField(max_digits=30, decimal_places=2))
+    @extend_schema_field(serializers.DecimalField(max_digits=40, decimal_places=2))
     def get_subtotal(self, obj):
         subtotal = sum(
             (item.product.price * item.quantity for item in self._items(obj)),

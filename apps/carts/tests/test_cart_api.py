@@ -145,6 +145,27 @@ def test_guest_token_cannot_resolve_customer_or_converted_cart(
 
 
 @pytest.mark.django_db
+def test_customer_deletion_does_not_turn_owned_cart_into_guest_cart(
+    api_client,
+    product,
+):
+    customer = create_customer("deleted-cart-owner@example.com")
+    cart = Cart.objects.create(customer=customer)
+    CartItem.objects.create(cart=cart, product=product, quantity=1)
+    token = cart.token
+
+    customer.delete()
+    response = api_client.get(
+        reverse("carts:cart-detail"),
+        HTTP_X_CART_TOKEN=str(token),
+    )
+
+    assert Cart.objects.filter(pk=cart.pk).exists() is False
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json() == {"detail": "Cart not found."}
+
+
+@pytest.mark.django_db
 def test_authenticated_customer_only_sees_own_cart(api_client, product):
     owner = create_customer("owner@example.com")
     other = create_customer("other@example.com")

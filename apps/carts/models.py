@@ -16,7 +16,7 @@ class Cart(models.Model):
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     customer = models.ForeignKey(
         CustomerProfile,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         related_name="carts",
         null=True,
         blank=True,
@@ -53,7 +53,7 @@ class CartItem(models.Model):
         on_delete=models.PROTECT,
         related_name="cart_items",
     )
-    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    quantity = models.PositiveBigIntegerField(validators=[MinValueValidator(1)])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
