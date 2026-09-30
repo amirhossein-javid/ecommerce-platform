@@ -33,24 +33,24 @@ class Order(models.Model):
         default=Status.PENDING_PAYMENT,
     )
     subtotal = models.DecimalField(
-        max_digits=14,
+        max_digits=24,
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.00"))],
     )
     discount_total = models.DecimalField(
-        max_digits=14,
+        max_digits=24,
         decimal_places=2,
         default=Decimal("0.00"),
         validators=[MinValueValidator(Decimal("0.00"))],
     )
     shipping_total = models.DecimalField(
-        max_digits=14,
+        max_digits=24,
         decimal_places=2,
         default=Decimal("0.00"),
         validators=[MinValueValidator(Decimal("0.00"))],
     )
     grand_total = models.DecimalField(
-        max_digits=14,
+        max_digits=24,
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.00"))],
     )
@@ -145,7 +145,7 @@ class OrderItem(models.Model):
     )
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     line_total = models.DecimalField(
-        max_digits=14,
+        max_digits=22,
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.00"))],
     )
