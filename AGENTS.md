@@ -18,12 +18,17 @@ Prefer simple, explicit Django/DRF patterns.
 
 - Keep business rules and ownership boundaries explicit.
 - Use database constraints for important invariants when practical.
-- Use `transaction.atomic()` and locking when concurrency affects correctness.
+- Put multi-model state transitions in small, explicit domain services; keep HTTP
+  parsing, authentication, and API error mapping in the DRF layer.
+- Use one outer `transaction.atomic()` boundary for all-or-nothing workflows.
+- For concurrency-sensitive workflows, lock ownership/aggregate rows before
+  dependent rows, lock multi-row sets in deterministic primary-key order, and
+  revalidate mutable state after acquiring locks. Keep locks targeted and use a
+  consistent order across workflows that touch the same rows.
 - Do not use signals for important business workflows.
 - Do not introduce service/repository layers without a concrete benefit.
 - Do not add infrastructure or dependencies without a current requirement.
 - Avoid premature abstractions and speculative features.
-- Preserve historical data independently when future domain records require snapshots.
 
 Before implementing, inspect related models, migrations, serializers, views, URLs, tests, and settings.
 
@@ -48,6 +53,13 @@ Customer-owned resources must derive ownership from the authenticated user.
 Never trust client-supplied ownership fields such as `user` or `customer_profile`.
 
 Cross-customer object access must be prevented at queryset/object lookup level.
+
+Authenticated users without a `CustomerProfile` must fail safely and must never
+fall back to guest credentials or guest-owned state.
+
+Treat opaque guest tokens as bearer credentials: scope lookups to eligible
+guest-owned records, never use them as authenticated ownership proof, and rotate
+or invalidate them when guest state is claimed or consumed.
 
 ## Addresses
 
@@ -82,6 +94,19 @@ Use appropriate HTTP status codes without leaking unnecessary account or object-
 
 Keep OpenAPI output accurate when endpoints change.
 
+Use `select_related()`/`prefetch_related()` for nested response data and add
+query-count tests when an endpoint could regress into N+1 queries.
+
+## Commerce Data Integrity
+
+- Use `Decimal`/`DecimalField` for money; never use binary floats.
+- Calculate prices and totals server-side from authoritative domain data. Do not
+  trust client-supplied monetary values.
+- Size monetary fields for valid multiplication and aggregation ranges, and back
+  important nonnegative/arithmetic invariants with database constraints.
+- Historical records must read mutable product, price, and address data from
+  immutable snapshots rather than current related objects.
+
 ## Migrations
 
 Treat committed migrations as immutable history.
@@ -101,7 +126,9 @@ Run project commands in the Compose `web` service: use
 
 Add tests for meaningful behavior, regressions, permissions, invariants, and security boundaries.
 
-For concurrency-sensitive database behavior, use real transaction/concurrency tests when needed.
+For concurrency-sensitive database behavior, use real transaction/concurrency
+tests when needed. Such tests must use separate database connections and should
+assert the final invariant, not merely that both calls returned.
 
 Do not add tests solely to increase coverage numbers.
 
