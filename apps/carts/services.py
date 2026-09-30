@@ -58,9 +58,10 @@ def add_product(*, cart, product, quantity):
             .first()
         )
 
+        if not _is_purchasable(locked_product):
+            raise ProductUnavailable("Product is not currently purchasable.")
+
         if item is None:
-            if not _is_purchasable(locked_product):
-                raise ProductUnavailable("Product is not currently purchasable.")
             resulting_quantity = quantity
         else:
             resulting_quantity = item.quantity + quantity

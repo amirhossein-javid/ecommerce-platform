@@ -169,6 +169,20 @@ def test_existing_item_remains_when_product_becomes_unavailable(
 
 
 @pytest.mark.django_db
+def test_unavailable_existing_product_cannot_be_added_again(product):
+    cart = Cart.objects.create()
+    item = CartItem.objects.create(cart=cart, product=product, quantity=2)
+    product.status = Product.Status.ARCHIVED
+    product.save(update_fields=("status",))
+
+    with pytest.raises(ProductUnavailable):
+        add_product(cart=cart, product=product, quantity=1)
+
+    item.refresh_from_db()
+    assert item.quantity == 2
+
+
+@pytest.mark.django_db
 def test_change_item_quantity_uses_current_stock(product):
     cart = Cart.objects.create()
     item = CartItem.objects.create(cart=cart, product=product, quantity=2)
