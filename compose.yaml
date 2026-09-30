@@ -32,6 +32,7 @@ services:
       BALE_PROVIDER_TOKEN: ${BALE_PROVIDER_TOKEN:-}
       BALE_CONNECT_TIMEOUT: ${BALE_CONNECT_TIMEOUT:-3.0}
       BALE_READ_TIMEOUT: ${BALE_READ_TIMEOUT:-10.0}
+      BALE_WEBHOOK_URL: ${BALE_WEBHOOK_URL:-}
       PYTEST_ADDOPTS: --override-ini cache_dir=/tmp/pytest_cache
     volumes:
       - .:/app

@@ -1,10 +1,15 @@
 from django.urls import path
 
-from .views import PaymentInitiationView, PaymentVerificationView
+from .views import BaleWebhookView, PaymentInitiationView, PaymentVerificationView
 
 app_name = "payments"
 
 urlpatterns = [
+    path(
+        "payments/bale/webhook/",
+        BaleWebhookView.as_view(),
+        name="bale-webhook",
+    ),
     path(
         "orders/<int:order_id>/payments/",
         PaymentInitiationView.as_view(),

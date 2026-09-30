@@ -1,16 +1,24 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.exceptions import NotFound
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import NotFound, ParseError
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import CustomerProfile
 from apps.orders.models import Order
 
-from .gateways import PaymentGatewayError
+from .bale_webhooks import (
+    PRE_CHECKOUT_REJECTION_MESSAGE,
+    BaleWebhookInvalid,
+    process_bale_webhook_update,
+    record_bale_payment_update,
+)
+from .gateways import PaymentGatewayError, get_payment_gateway
 from .models import PaymentAttempt
 from .serializers import (
+    BaleUpdateSerializer,
+    BaleWebhookResponseSerializer,
     PaymentAttemptSerializer,
     PaymentErrorSerializer,
     PaymentInitiationRequestSerializer,
@@ -26,6 +34,7 @@ from .services import (
 )
 
 PAYMENT_GATEWAY_UNAVAILABLE_MESSAGE = "Payment gateway is temporarily unavailable."
+BALE_WEBHOOK_INVALID_MESSAGE = "Invalid Bale payment update."
 
 
 class CustomerPaymentMixin:
@@ -134,3 +143,67 @@ class PaymentVerificationView(CustomerPaymentMixin, APIView):
             )
 
         return Response(PaymentAttemptSerializer(attempt).data)
+
+
+class BaleWebhookView(APIView):
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+
+    @extend_schema(
+        request=BaleUpdateSerializer,
+        responses={
+            status.HTTP_200_OK: BaleWebhookResponseSerializer,
+            status.HTTP_400_BAD_REQUEST: PaymentErrorSerializer,
+        },
+        description=(
+            "Receive Bale payment updates. This provider endpoint is unauthenticated "
+            "because Bale documents no webhook signature; payment success is verified "
+            "through inquireTransaction before atomic finalization."
+        ),
+        auth=[],
+        tags=["Payments"],
+    )
+    def post(self, request):
+        try:
+            data = request.data
+        except ParseError:
+            return self._invalid_response()
+        serializer = BaleUpdateSerializer(data=data)
+        if not serializer.is_valid():
+            return self._invalid_response()
+
+        update = serializer.validated_data
+        pre_checkout = update.get("pre_checkout_query")
+        successful_payment = update.get("message", {}).get("successful_payment")
+        if pre_checkout is None and successful_payment is None:
+            return Response({"ok": True})
+
+        try:
+            record = record_bale_payment_update(update=update)
+        except BaleWebhookInvalid:
+            gateway = get_payment_gateway()
+            if pre_checkout is not None and gateway.name == "bale":
+                try:
+                    gateway.answer_pre_checkout_query(
+                        pre_checkout_query_id=pre_checkout["id"],
+                        ok=False,
+                        error_message=PRE_CHECKOUT_REJECTION_MESSAGE,
+                    )
+                except PaymentGatewayError:
+                    pass
+            return Response({"ok": True})
+
+        gateway = get_payment_gateway()
+        if gateway.name == "bale":
+            process_bale_webhook_update(
+                update_id=record.update_id,
+                gateway=gateway,
+            )
+        return Response({"ok": True})
+
+    @staticmethod
+    def _invalid_response():
+        return Response(
+            {"detail": BALE_WEBHOOK_INVALID_MESSAGE},
+            status=status.HTTP_400_BAD_REQUEST,
+        )

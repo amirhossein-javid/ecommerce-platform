@@ -40,3 +40,45 @@ class PaymentVerificationRequestSerializer(serializers.Serializer):
 
 class PaymentErrorSerializer(serializers.Serializer):
     detail = serializers.CharField()
+
+
+class BalePreCheckoutQuerySerializer(serializers.Serializer):
+    id = serializers.CharField(max_length=255)
+    currency = serializers.CharField(max_length=3)
+    total_amount = serializers.IntegerField(min_value=0)
+    invoice_payload = serializers.CharField(max_length=128)
+
+
+class BaleSuccessfulPaymentSerializer(serializers.Serializer):
+    currency = serializers.CharField(max_length=3)
+    total_amount = serializers.IntegerField(min_value=0)
+    invoice_payload = serializers.CharField(max_length=128)
+    telegram_payment_charge_id = serializers.CharField(max_length=255)
+    provider_payment_charge_id = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=False,
+    )
+
+
+class BaleMessageSerializer(serializers.Serializer):
+    successful_payment = BaleSuccessfulPaymentSerializer(required=False)
+
+
+class BaleUpdateSerializer(serializers.Serializer):
+    update_id = serializers.IntegerField(
+        min_value=0, max_value=9_223_372_036_854_775_807
+    )
+    pre_checkout_query = BalePreCheckoutQuerySerializer(required=False)
+    message = BaleMessageSerializer(required=False)
+
+    def validate(self, attrs):
+        has_pre_checkout = "pre_checkout_query" in attrs
+        has_message = "message" in attrs
+        if has_pre_checkout and has_message:
+            raise serializers.ValidationError("Expected one payment update type.")
+        return attrs
+
+
+class BaleWebhookResponseSerializer(serializers.Serializer):
+    ok = serializers.BooleanField()

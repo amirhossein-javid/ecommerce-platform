@@ -1,3 +1,5 @@
+from enum import StrEnum
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -27,6 +29,11 @@ class PaymentVerificationInvalid(PaymentError):
 
 class PaymentInventoryInvalid(PaymentError):
     pass
+
+
+class ProviderTransactionClaimResult(StrEnum):
+    CLAIMED = "CLAIMED"
+    ACCEPTED = "ACCEPTED"
 
 
 def initiate_order_payment(*, order, at=None, gateway=None):
@@ -95,14 +102,208 @@ def verify_order_payment(*, attempt, callback_data, at=None, gateway=None):
     ):
         raise PaymentVerificationInvalid("The verified payment amount does not match.")
 
+    return finalize_verified_payment(
+        attempt=attempt,
+        verification=verification,
+        at=at,
+    )
+
+
+def claim_payment_attempt_pre_checkout(*, attempt, provider_transaction_id, at=None):
+    """Reserve one PreCheckout identity without accepting it as provider truth."""
+    if not provider_transaction_id:
+        raise PaymentVerificationInvalid("The provider transaction is invalid.")
+
+    expired = False
+    result = None
     with transaction.atomic():
         locked_order = Order.objects.select_for_update().get(pk=attempt.order_id)
         locked_attempt = PaymentAttempt.objects.select_for_update().get(
             pk=attempt.pk,
             order=locked_order,
         )
+        reservations = _lock_order_reservations(locked_order)
+        decision_time = at or timezone.now()
+        try:
+            _validate_order_is_payable(
+                order=locked_order,
+                reservations=reservations,
+                at=decision_time,
+            )
+        except PaymentWindowExpired:
+            _expire_locked_order(order=locked_order, at=decision_time)
+            expired = True
+
+        if not expired:
+            if (
+                locked_attempt.status != PaymentAttempt.Status.PENDING
+                or not locked_attempt.gateway_reference
+            ):
+                raise OrderNotPayable("The payment attempt is not pending.")
+            if locked_attempt.provider_transaction_id == provider_transaction_id:
+                result = ProviderTransactionClaimResult.ACCEPTED
+            elif locked_attempt.provider_transaction_id is not None:
+                raise PaymentVerificationInvalid(
+                    "The provider transaction does not match."
+                )
+            elif locked_attempt.pre_checkout_transaction_id in (
+                None,
+                provider_transaction_id,
+            ):
+                if locked_attempt.pre_checkout_transaction_id is None:
+                    locked_attempt.pre_checkout_transaction_id = provider_transaction_id
+                    locked_attempt.save(
+                        update_fields=(
+                            "pre_checkout_transaction_id",
+                            "updated_at",
+                        )
+                    )
+                if (
+                    PaymentAttempt.objects.filter(
+                        gateway=locked_attempt.gateway,
+                        provider_transaction_id=provider_transaction_id,
+                    )
+                    .exclude(pk=locked_attempt.pk)
+                    .exists()
+                ):
+                    raise PaymentVerificationInvalid(
+                        "The provider transaction is already in use."
+                    )
+                result = ProviderTransactionClaimResult.CLAIMED
+            else:
+                raise PaymentVerificationInvalid(
+                    "A different provider transaction is being processed."
+                )
+
+    if expired:
+        raise PaymentWindowExpired("The order payment window has expired.")
+    return result
+
+
+def accept_payment_attempt_pre_checkout(*, attempt, provider_transaction_id, at=None):
+    """Commit a provider identity only after Bale accepted PreCheckout."""
+    expired = False
+    accepted = False
+    with transaction.atomic():
+        locked_order = Order.objects.select_for_update().get(pk=attempt.order_id)
+        locked_attempt = PaymentAttempt.objects.select_for_update().get(
+            pk=attempt.pk,
+            order=locked_order,
+        )
+        reservations = _lock_order_reservations(locked_order)
+        decision_time = at or timezone.now()
+        try:
+            _validate_order_is_payable(
+                order=locked_order,
+                reservations=reservations,
+                at=decision_time,
+            )
+        except PaymentWindowExpired:
+            _expire_locked_order(order=locked_order, at=decision_time)
+            expired = True
+
+        if not expired:
+            if locked_attempt.provider_transaction_id == provider_transaction_id:
+                if (
+                    locked_attempt.pre_checkout_transaction_id
+                    == provider_transaction_id
+                ):
+                    locked_attempt.pre_checkout_transaction_id = None
+                    locked_attempt.save(
+                        update_fields=(
+                            "pre_checkout_transaction_id",
+                            "updated_at",
+                        )
+                    )
+                accepted = True
+            elif (
+                locked_attempt.provider_transaction_id is None
+                and locked_attempt.pre_checkout_transaction_id
+                == provider_transaction_id
+            ):
+                locked_attempt.provider_transaction_id = provider_transaction_id
+                locked_attempt.pre_checkout_transaction_id = None
+                locked_attempt.save(
+                    update_fields=(
+                        "provider_transaction_id",
+                        "pre_checkout_transaction_id",
+                        "updated_at",
+                    )
+                )
+                accepted = True
+
+    if expired:
+        raise PaymentWindowExpired("The order payment window has expired.")
+    return accepted
+
+
+def release_payment_attempt_pre_checkout(*, attempt, provider_transaction_id):
+    """Release only the caller's unaccepted PreCheckout claim."""
+    with transaction.atomic():
+        locked_order = Order.objects.select_for_update().get(pk=attempt.order_id)
+        locked_attempt = PaymentAttempt.objects.select_for_update().get(
+            pk=attempt.pk,
+            order=locked_order,
+        )
+        if (
+            locked_attempt.provider_transaction_id is None
+            and locked_attempt.pre_checkout_transaction_id == provider_transaction_id
+        ):
+            locked_attempt.pre_checkout_transaction_id = None
+            locked_attempt.save(
+                update_fields=("pre_checkout_transaction_id", "updated_at")
+            )
+
+
+def finalize_verified_payment(
+    *,
+    attempt,
+    verification,
+    provider_transaction_id=None,
+    at=None,
+):
+    """Apply a trusted gateway result using the central atomic finalization path."""
+    if verification.gateway_reference != attempt.gateway_reference:
+        raise PaymentVerificationInvalid(
+            "The verified payment reference does not match."
+        )
+    if verification.status not in (
+        VerificationStatus.SUCCESS,
+        VerificationStatus.FAILED,
+    ):
+        raise PaymentVerificationInvalid("The gateway returned an invalid status.")
+    if verification.status == VerificationStatus.SUCCESS and (
+        verification.amount != attempt.amount
+        or verification.currency != attempt.currency
+    ):
+        raise PaymentVerificationInvalid("The verified payment amount does not match.")
+    if provider_transaction_id == "":
+        raise PaymentVerificationInvalid("The provider transaction is invalid.")
+
+    with transaction.atomic():
+        locked_order = Order.objects.select_for_update().get(pk=attempt.order_id)
+        locked_attempt = PaymentAttempt.objects.select_for_update().get(
+            pk=attempt.pk,
+            order=locked_order,
+        )
+        if locked_attempt.status == PaymentAttempt.Status.SUCCESS:
+            if (
+                provider_transaction_id is not None
+                and locked_attempt.provider_transaction_id != provider_transaction_id
+            ):
+                raise PaymentVerificationInvalid(
+                    "The provider transaction does not match."
+                )
+            return locked_attempt
         if locked_attempt.status != PaymentAttempt.Status.PENDING:
             return locked_attempt
+
+        if (
+            provider_transaction_id is not None
+            and locked_attempt.provider_transaction_id
+            not in (None, provider_transaction_id)
+        ):
+            raise PaymentVerificationInvalid("The provider transaction does not match.")
 
         reservations = _lock_order_reservations(locked_order)
         state_time = at or timezone.now()
@@ -160,7 +361,17 @@ def verify_order_payment(*, attempt, callback_data, at=None, gateway=None):
                 locked_order.status = Order.Status.PAID
                 locked_order.save(update_fields=("status", "updated_at"))
                 locked_attempt.status = PaymentAttempt.Status.SUCCESS
-                locked_attempt.save(update_fields=("status", "updated_at"))
+                if provider_transaction_id is not None:
+                    locked_attempt.provider_transaction_id = provider_transaction_id
+                    locked_attempt.pre_checkout_transaction_id = None
+                locked_attempt.save(
+                    update_fields=(
+                        "status",
+                        "provider_transaction_id",
+                        "pre_checkout_transaction_id",
+                        "updated_at",
+                    )
+                )
                 commit_decision_time = at or timezone.now()
                 _validate_payment_deadline(
                     reservations=reservations,

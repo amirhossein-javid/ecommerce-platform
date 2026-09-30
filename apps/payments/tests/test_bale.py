@@ -275,6 +275,61 @@ def test_inquire_transaction_rejects_malformed_results(result):
         gateway.inquire_transaction("transaction-123")
 
 
+def test_answer_pre_checkout_query_uses_documented_request_shape():
+    session = StubSession(
+        StubResponse(body={"ok": True, "result": True}),
+        StubResponse(body={"ok": True, "result": True}),
+    )
+    gateway = make_gateway(session)
+
+    gateway.answer_pre_checkout_query(pre_checkout_query_id="tx-1", ok=True)
+    gateway.answer_pre_checkout_query(
+        pre_checkout_query_id="tx-2",
+        ok=False,
+        error_message="Payment cannot be completed.",
+    )
+
+    assert session.calls == [
+        (
+            f"https://tapi.bale.ai/bot{BOT_TOKEN}/answerPreCheckoutQuery",
+            {
+                "json": {"pre_checkout_query_id": "tx-1", "ok": True},
+                "timeout": (2.5, 7.5),
+            },
+        ),
+        (
+            f"https://tapi.bale.ai/bot{BOT_TOKEN}/answerPreCheckoutQuery",
+            {
+                "json": {
+                    "pre_checkout_query_id": "tx-2",
+                    "ok": False,
+                    "error_message": "Payment cannot be completed.",
+                },
+                "timeout": (2.5, 7.5),
+            },
+        ),
+    ]
+    assert PROVIDER_TOKEN not in str(session.calls)
+
+
+def test_set_webhook_uses_documented_request_shape():
+    session = StubSession(StubResponse(body={"ok": True, "result": True}))
+    gateway = make_gateway(session)
+
+    gateway.set_webhook("https://shop.example/api/v1/payments/bale/webhook/")
+
+    assert session.calls == [
+        (
+            f"https://tapi.bale.ai/bot{BOT_TOKEN}/setWebhook",
+            {
+                "json": {"url": "https://shop.example/api/v1/payments/bale/webhook/"},
+                "timeout": (2.5, 7.5),
+            },
+        )
+    ]
+    assert PROVIDER_TOKEN not in str(session.calls)
+
+
 @pytest.mark.parametrize(
     "overrides",
     [

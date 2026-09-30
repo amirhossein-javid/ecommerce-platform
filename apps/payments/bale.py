@@ -136,6 +136,32 @@ class BaleGateway:
             created_at=created_at,
         )
 
+    def answer_pre_checkout_query(
+        self,
+        *,
+        pre_checkout_query_id: str,
+        ok: bool,
+        error_message: str | None = None,
+    ) -> None:
+        self._validate_configuration(require_provider_token=False)
+        if not pre_checkout_query_id:
+            raise PaymentGatewayError("The Bale pre-checkout identifier is invalid.")
+        payload = {
+            "pre_checkout_query_id": pre_checkout_query_id,
+            "ok": ok,
+        }
+        if not ok:
+            if not error_message:
+                raise PaymentGatewayError("A Bale rejection message is required.")
+            payload["error_message"] = error_message
+        if self._request("answerPreCheckoutQuery", payload) is not True:
+            raise PaymentGatewayError("Bale did not accept the pre-checkout answer.")
+
+    def set_webhook(self, url: str) -> None:
+        self._validate_configuration(require_provider_token=False)
+        if self._request("setWebhook", {"url": url}) is not True:
+            raise PaymentGatewayError("Bale did not accept the webhook URL.")
+
     def verify(self, **kwargs):
         raise PaymentGatewayUnavailable(
             "Bale payment-event verification is not configured."
