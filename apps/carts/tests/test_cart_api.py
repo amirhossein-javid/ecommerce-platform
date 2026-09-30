@@ -66,6 +66,22 @@ def test_guest_get_without_token_is_empty_and_creates_no_cart(api_client):
 
 
 @pytest.mark.django_db
+def test_cart_responses_are_not_cacheable_and_vary_by_credentials(api_client):
+    cart = Cart.objects.create()
+
+    response = api_client.get(
+        reverse("carts:cart-detail"),
+        **token_headers(cart),
+    )
+
+    cache_control = response["Cache-Control"].lower()
+    vary = {value.strip().lower() for value in response["Vary"].split(",")}
+    assert "private" in cache_control
+    assert "no-store" in cache_control
+    assert {"authorization", "x-cart-token"} <= vary
+
+
+@pytest.mark.django_db
 def test_guest_first_add_creates_cart_and_returns_token(api_client, product):
     response = add_item(api_client, product, quantity=2)
 
@@ -181,6 +197,30 @@ def test_authenticated_request_ignores_guest_token(api_client, product):
 
     assert response.json() == {"items": [], "subtotal": "0.00"}
     assert delete_response.status_code == status.HTTP_404_NOT_FOUND
+    assert CartItem.objects.filter(pk=guest_item.pk).exists()
+
+
+@pytest.mark.django_db
+def test_authenticated_user_without_profile_cannot_fall_back_to_guest_token(
+    api_client,
+    product,
+):
+    system_user = User.objects.create_user("system@example.com")
+    guest_cart = Cart.objects.create()
+    guest_item = CartItem.objects.create(
+        cart=guest_cart,
+        product=product,
+        quantity=1,
+    )
+    api_client.force_authenticate(user=system_user)
+
+    response = api_client.get(
+        reverse("carts:cart-detail"),
+        **token_headers(guest_cart),
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json() == {"detail": "Customer profile not found."}
     assert CartItem.objects.filter(pk=guest_item.pk).exists()
 
 

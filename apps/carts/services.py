@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import transaction
 
 from apps.accounts.models import CustomerProfile
@@ -23,6 +25,10 @@ class ProductUnavailable(CartError):
 
 
 class CartNotActive(CartError):
+    pass
+
+
+class GuestCartNotFound(CartError):
     pass
 
 
@@ -107,6 +113,61 @@ def remove_item(*, item):
             cart=locked_cart,
         )
         locked_item.delete()
+
+
+def merge_guest_cart(*, customer, guest_token):
+    """Atomically consume a guest cart into a customer's active cart."""
+    with transaction.atomic():
+        locked_customer = CustomerProfile.objects.select_for_update().get(
+            pk=customer.pk
+        )
+        try:
+            guest_cart = Cart.objects.select_for_update().get(
+                token=guest_token,
+                customer__isnull=True,
+                status=Cart.Status.ACTIVE,
+            )
+        except Cart.DoesNotExist as exc:
+            raise GuestCartNotFound("Guest cart not found.") from exc
+
+        customer_cart = (
+            Cart.objects.select_for_update()
+            .filter(
+                customer=locked_customer,
+                status=Cart.Status.ACTIVE,
+            )
+            .first()
+        )
+        if customer_cart is None:
+            guest_cart.customer = locked_customer
+            guest_cart.token = uuid.uuid4()
+            guest_cart.save(update_fields=("customer", "token", "updated_at"))
+            return guest_cart
+
+        guest_items = list(
+            CartItem.objects.select_for_update().filter(cart=guest_cart).order_by("pk")
+        )
+        customer_items = {
+            item.product_id: item
+            for item in CartItem.objects.select_for_update()
+            .filter(cart=customer_cart)
+            .order_by("pk")
+        }
+
+        for guest_item in guest_items:
+            customer_item = customer_items.get(guest_item.product_id)
+            if customer_item is None:
+                guest_item.cart = customer_cart
+                guest_item.save(update_fields=("cart",))
+                customer_items[guest_item.product_id] = guest_item
+                continue
+
+            customer_item.quantity += guest_item.quantity
+            customer_item.save(update_fields=("quantity", "updated_at"))
+            guest_item.delete()
+
+        guest_cart.delete()
+        return customer_cart
 
 
 def _get_locked_active_cart(cart_id):

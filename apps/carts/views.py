@@ -2,14 +2,15 @@ import uuid
 
 from django.db import transaction
 from django.db.models import Prefetch
+from django.utils.cache import patch_cache_control, patch_vary_headers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
 )
 from rest_framework import serializers, status
-from rest_framework.exceptions import NotFound
-from rest_framework.permissions import AllowAny
+from rest_framework.exceptions import NotFound, ParseError
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -27,11 +28,13 @@ from .serializers import (
 )
 from .services import (
     CartNotActive,
+    GuestCartNotFound,
     InsufficientStock,
     ProductUnavailable,
     add_product,
     change_item_quantity,
     get_or_create_active_customer_cart,
+    merge_guest_cart,
     remove_item,
 )
 
@@ -56,6 +59,17 @@ cart_token_response_parameter = OpenApiParameter(
     description=(
         "Token associated with a guest cart. Send it as X-Cart-Token on later "
         "guest requests. It is never returned for customer-owned carts."
+    ),
+)
+
+required_cart_token_parameter = OpenApiParameter(
+    name=CART_TOKEN_HEADER,
+    type=OpenApiTypes.UUID,
+    location=OpenApiParameter.HEADER,
+    required=True,
+    description=(
+        "Credential for the ACTIVE guest cart to consume. The token is invalid "
+        "after a successful merge."
     ),
 )
 
@@ -98,6 +112,18 @@ def _item_queryset():
 
 class CurrentCartMixin:
     permission_classes = (AllowAny,)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        patch_cache_control(
+            response,
+            private=True,
+            no_cache=True,
+            no_store=True,
+            must_revalidate=True,
+        )
+        patch_vary_headers(response, ("Authorization", CART_TOKEN_HEADER))
+        return response
 
     def resolve_cart(self, *, create=False, with_contents=False):
         if self.request.user.is_authenticated:
@@ -151,11 +177,14 @@ class CurrentCartMixin:
             raise NotFound("Cart item not found.") from exc
 
     def cart_response(self, cart, *, response_status=status.HTTP_200_OK):
-        loaded_cart = (
-            cart
-            if hasattr(cart, "prefetched_items")
-            else _cart_queryset().get(pk=cart.pk)
-        )
+        try:
+            loaded_cart = (
+                cart
+                if hasattr(cart, "prefetched_items")
+                else _cart_queryset().get(pk=cart.pk)
+            )
+        except Cart.DoesNotExist as exc:
+            raise NotFound("Cart not found.") from exc
         response = Response(
             CartSerializer(loaded_cart, context={"request": self.request}).data,
             status=response_status,
@@ -255,7 +284,10 @@ class CartItemDetailView(CurrentCartMixin, APIView):
         except (CartNotActive, Cart.DoesNotExist, CartItem.DoesNotExist) as exc:
             raise NotFound("Cart item not found.") from exc
 
-        loaded_item = _item_queryset().get(pk=updated_item.pk)
+        try:
+            loaded_item = _item_queryset().get(pk=updated_item.pk)
+        except CartItem.DoesNotExist as exc:
+            raise NotFound("Cart item not found.") from exc
         return Response(
             CartItemSerializer(
                 loaded_item,
@@ -279,3 +311,46 @@ class CartItemDetailView(CurrentCartMixin, APIView):
         except (CartNotActive, Cart.DoesNotExist, CartItem.DoesNotExist) as exc:
             raise NotFound("Cart item not found.") from exc
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CartMergeView(CurrentCartMixin, APIView):
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        parameters=[required_cart_token_parameter],
+        request=None,
+        responses={
+            status.HTTP_200_OK: CartSerializer,
+            status.HTTP_400_BAD_REQUEST: CartErrorSerializer,
+            status.HTTP_401_UNAUTHORIZED: CartErrorSerializer,
+            status.HTTP_404_NOT_FOUND: CartErrorSerializer,
+        },
+        description=(
+            "Consume an ACTIVE guest cart into the authenticated customer's cart. "
+            "The guest token cannot be reused after success."
+        ),
+        tags=["Cart"],
+    )
+    def post(self, request):
+        raw_token = request.headers.get(CART_TOKEN_HEADER)
+        if not raw_token:
+            raise ParseError("X-Cart-Token header is required.")
+        try:
+            guest_token = uuid.UUID(raw_token)
+        except (ValueError, AttributeError) as exc:
+            raise NotFound("Guest cart not found.") from exc
+
+        try:
+            customer = CustomerProfile.objects.get(user=request.user)
+        except CustomerProfile.DoesNotExist as exc:
+            raise NotFound("Customer profile not found.") from exc
+
+        try:
+            cart = merge_guest_cart(
+                customer=customer,
+                guest_token=guest_token,
+            )
+        except GuestCartNotFound as exc:
+            raise NotFound("Guest cart not found.") from exc
+
+        return self.cart_response(cart)
