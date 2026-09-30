@@ -174,3 +174,60 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} × {self.product_name}"
+
+
+class InventoryReservation(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        CONSUMED = "CONSUMED", "Consumed"
+        RELEASED = "RELEASED", "Released"
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="inventory_reservations",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="inventory_reservations",
+    )
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    status = models.CharField(
+        max_length=8,
+        choices=Status,
+        default=Status.ACTIVE,
+    )
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("order", "product"),
+                name="orders_unique_reservation_per_product",
+            ),
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0),
+                name="orders_reservation_quantity_gt_zero",
+            ),
+            models.CheckConstraint(
+                condition=Q(status__in=("ACTIVE", "CONSUMED", "RELEASED")),
+                name="orders_reservation_valid_status",
+            ),
+            models.CheckConstraint(
+                condition=Q(expires_at__gt=F("created_at")),
+                name="orders_reservation_expiry_after_creation",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("product", "expires_at"),
+                condition=Q(status="ACTIVE"),
+                name="orders_active_reservation_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.quantity} reserved for order {self.order_id}"
