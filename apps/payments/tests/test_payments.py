@@ -14,8 +14,9 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.accounts.models import CustomerProfile, User
-from apps.orders.models import InventoryReservation, Order
+from apps.orders.models import InventoryReservation, Order, OrderStatusHistory
 from apps.orders.services import RESERVATION_LIFETIME
+from apps.payments import services as payment_services
 from apps.payments.gateways import (
     PaymentGatewayUnavailable,
     PaymentInitiation,
@@ -476,6 +477,11 @@ def test_expired_initiation_expires_order_releases_reservation_and_fails_pending
     assert pending.status == PaymentAttempt.Status.FAILED
     assert product.stock_quantity == 10
     assert gateway.initiations == []
+    history = OrderStatusHistory.objects.get(order=order)
+    assert history.from_status == Order.Status.PENDING_PAYMENT
+    assert history.to_status == Order.Status.EXPIRED
+    assert history.actor_type == OrderStatusHistory.ActorType.SYSTEM
+    assert history.actor_user is None
 
 
 @pytest.mark.django_db
@@ -514,9 +520,15 @@ def test_successful_verification_finalizes_order_and_stock_once(
     product.refresh_from_db()
     reservation.refresh_from_db()
     assert order.status == Order.Status.PAID
+    assert order.paid_at is not None
     assert product.stock_quantity == 8
     assert reservation.status == InventoryReservation.Status.CONSUMED
     assert len(gateway.verifications) == 1
+    history = OrderStatusHistory.objects.get(order=order)
+    assert history.from_status == Order.Status.PENDING_PAYMENT
+    assert history.to_status == Order.Status.PAID
+    assert history.actor_type == OrderStatusHistory.ActorType.SYSTEM
+    assert history.actor_user is None
 
 
 @pytest.mark.django_db
@@ -568,6 +580,53 @@ def test_success_after_expiry_cannot_pay_or_deduct_stock(payable_order, gateway)
     assert order.status == Order.Status.EXPIRED
     assert reservation.status == InventoryReservation.Status.RELEASED
     assert product.stock_quantity == 10
+
+
+@pytest.mark.django_db
+def test_final_deadline_rollback_refreshes_order_before_expiry(
+    payable_order,
+    gateway,
+    monkeypatch,
+):
+    order, product, reservation = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    original_validate_deadline = payment_services._validate_payment_deadline
+    calls = 0
+
+    def expire_after_temporary_paid_mutations(*, reservations, at):
+        nonlocal calls
+        calls += 1
+        if calls == 4:
+            raise PaymentWindowExpired("The order payment window has expired.")
+        return original_validate_deadline(reservations=reservations, at=at)
+
+    monkeypatch.setattr(
+        payment_services,
+        "_validate_payment_deadline",
+        expire_after_temporary_paid_mutations,
+    )
+
+    result = verify_order_payment(
+        attempt=attempt,
+        callback_data={"race": "final-deadline"},
+        gateway=gateway,
+    )
+
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt.refresh_from_db()
+    history = list(OrderStatusHistory.objects.filter(order=order))
+    assert calls == 4
+    assert result.status == PaymentAttempt.Status.FAILED
+    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert order.status == Order.Status.EXPIRED
+    assert order.paid_at is None
+    assert product.stock_quantity == 10
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert len(history) == 1
+    assert history[0].from_status == Order.Status.PENDING_PAYMENT
+    assert history[0].to_status == Order.Status.EXPIRED
 
 
 def _initiate_in_thread(order_id, gateway, barrier):
@@ -827,6 +886,14 @@ def test_concurrent_successful_verification_deducts_stock_exactly_once():
         for reservation in InventoryReservation.objects.filter(
             pk__in=[item.pk for item in reservations]
         )
+    )
+    assert (
+        OrderStatusHistory.objects.filter(
+            order=order,
+            from_status=Order.Status.PENDING_PAYMENT,
+            to_status=Order.Status.PAID,
+        ).count()
+        == 1
     )
 
 

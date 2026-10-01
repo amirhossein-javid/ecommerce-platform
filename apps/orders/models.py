@@ -1,8 +1,10 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Q
+from django.utils import timezone
 
 from apps.accounts.models import CustomerProfile
 from apps.accounts.validators import (
@@ -23,6 +25,11 @@ class Order(models.Model):
         CANCELLED = "CANCELLED", "Cancelled"
         EXPIRED = "EXPIRED", "Expired"
 
+    class RefundStatus(models.TextChoices):
+        NOT_REQUIRED = "NOT_REQUIRED", "Not required"
+        REQUIRED = "REQUIRED", "Required"
+        RESOLVED = "RESOLVED", "Resolved"
+
     customer = models.ForeignKey(
         CustomerProfile,
         on_delete=models.PROTECT,
@@ -32,6 +39,24 @@ class Order(models.Model):
         max_length=15,
         choices=Status,
         default=Status.PENDING_PAYMENT,
+    )
+    refund_status = models.CharField(
+        max_length=12,
+        choices=RefundStatus,
+        default=RefundStatus.NOT_REQUIRED,
+    )
+    paid_at = models.DateTimeField(null=True, blank=True)
+    processing_at = models.DateTimeField(null=True, blank=True)
+    shipped_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    refund_resolved_at = models.DateTimeField(null=True, blank=True)
+    refund_resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="refunds_resolved",
+        null=True,
+        blank=True,
     )
     subtotal = models.DecimalField(
         max_digits=24,
@@ -89,6 +114,25 @@ class Order(models.Model):
                 name="orders_order_valid_status",
             ),
             models.CheckConstraint(
+                condition=Q(refund_status__in=("NOT_REQUIRED", "REQUIRED", "RESOLVED")),
+                name="orders_order_valid_refund_status",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        refund_status="RESOLVED",
+                        refund_resolved_at__isnull=False,
+                        refund_resolved_by__isnull=False,
+                    )
+                    | Q(
+                        ~Q(refund_status="RESOLVED"),
+                        refund_resolved_at__isnull=True,
+                        refund_resolved_by__isnull=True,
+                    )
+                ),
+                name="orders_order_refund_resolution_consistent",
+            ),
+            models.CheckConstraint(
                 condition=Q(subtotal__gte=0),
                 name="orders_order_subtotal_nonnegative",
             ),
@@ -138,6 +182,103 @@ class Order(models.Model):
 
     def __str__(self):
         return f"Order {self.pk} ({self.status})"
+
+
+class AppendOnlyOrderStatusHistoryQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise TypeError("Order status history is append-only.")
+
+    def delete(self):
+        raise TypeError("Order status history is append-only.")
+
+
+class OrderStatusHistory(models.Model):
+    class ActorType(models.TextChoices):
+        CUSTOMER = "CUSTOMER", "Customer"
+        OPERATOR = "OPERATOR", "Operator"
+        SYSTEM = "SYSTEM", "System"
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.PROTECT,
+        related_name="status_history",
+    )
+    from_status = models.CharField(max_length=15, choices=Order.Status)
+    to_status = models.CharField(max_length=15, choices=Order.Status)
+    actor_type = models.CharField(max_length=8, choices=ActorType)
+    actor_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="order_status_changes",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    objects = AppendOnlyOrderStatusHistoryQuerySet.as_manager()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(
+                    from_status__in=(
+                        "PENDING_PAYMENT",
+                        "PAID",
+                        "PROCESSING",
+                        "SHIPPED",
+                        "DELIVERED",
+                        "CANCELLED",
+                        "EXPIRED",
+                    )
+                ),
+                name="orders_history_valid_from_status",
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    to_status__in=(
+                        "PENDING_PAYMENT",
+                        "PAID",
+                        "PROCESSING",
+                        "SHIPPED",
+                        "DELIVERED",
+                        "CANCELLED",
+                        "EXPIRED",
+                    )
+                ),
+                name="orders_history_valid_to_status",
+            ),
+            models.CheckConstraint(
+                condition=~Q(from_status=F("to_status")),
+                name="orders_history_status_changed",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(actor_type="SYSTEM", actor_user__isnull=True)
+                    | Q(
+                        actor_type__in=("CUSTOMER", "OPERATOR"),
+                        actor_user__isnull=False,
+                    )
+                ),
+                name="orders_history_actor_consistent",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("order", "created_at"),
+                name="orders_history_order_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"Order {self.order_id}: {self.from_status} -> {self.to_status}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise TypeError("Order status history is append-only.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise TypeError("Order status history is append-only.")
 
 
 class OrderItem(models.Model):
