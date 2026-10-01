@@ -4,6 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.common.money import STORE_CURRENCY
+from apps.orders.lifecycle import _mark_locked_order_expired, _mark_locked_order_paid
 from apps.orders.models import InventoryReservation, Order
 from apps.products.models import Product
 
@@ -69,6 +70,8 @@ def initiate_order_payment(*, order, at=None, gateway=None):
     )
     if expired:
         raise PaymentWindowExpired("The order payment window has expired.")
+    if attempt.status != PaymentAttempt.Status.PENDING:
+        raise OrderNotPayable("The payment attempt is no longer pending.")
     return attempt, attempt.payment_url, created
 
 
@@ -358,8 +361,10 @@ def finalize_verified_payment(
                     status=InventoryReservation.Status.CONSUMED,
                     updated_at=completion_time,
                 )
-                locked_order.status = Order.Status.PAID
-                locked_order.save(update_fields=("status", "updated_at"))
+                _mark_locked_order_paid(
+                    order=locked_order,
+                    at=completion_time,
+                )
                 locked_attempt.status = PaymentAttempt.Status.SUCCESS
                 if provider_transaction_id is not None:
                     locked_attempt.provider_transaction_id = provider_transaction_id
@@ -379,6 +384,7 @@ def finalize_verified_payment(
                 )
         except PaymentWindowExpired:
             expiry_time = at or timezone.now()
+            locked_order.refresh_from_db()
             _expire_locked_order(order=locked_order, at=expiry_time)
             locked_attempt.refresh_from_db(fields=("status", "updated_at"))
         return locked_attempt
@@ -514,5 +520,7 @@ def _expire_locked_order(*, order, at):
         order=order,
         status=PaymentAttempt.Status.PENDING,
     ).update(status=PaymentAttempt.Status.FAILED, updated_at=at)
-    order.status = Order.Status.EXPIRED
-    order.save(update_fields=("status", "updated_at"))
+    _mark_locked_order_expired(
+        order=order,
+        at=at,
+    )

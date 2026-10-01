@@ -98,6 +98,18 @@ def test_uninitialized_pending_attempt_has_stable_unique_idempotency_key(order):
 
 
 @pytest.mark.django_db
+def test_customer_handoff_values_are_hidden_for_terminal_attempt(order):
+    attempt = create_attempt(order, "bale-reference", gateway="bale")
+
+    assert attempt.customer_payment_url == attempt.payment_url
+    assert attempt.customer_payment_identifier == "bale-reference"
+
+    attempt.status = PaymentAttempt.Status.FAILED
+    assert attempt.customer_payment_url is None
+    assert attempt.customer_payment_identifier is None
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("overrides", "reference"),
     [

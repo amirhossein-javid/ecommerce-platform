@@ -14,8 +14,10 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.accounts.models import CustomerProfile, User
-from apps.orders.models import InventoryReservation, Order
+from apps.orders.lifecycle import cancel_order
+from apps.orders.models import InventoryReservation, Order, OrderStatusHistory
 from apps.orders.services import RESERVATION_LIFETIME
+from apps.payments import services as payment_services
 from apps.payments.gateways import (
     PaymentGatewayUnavailable,
     PaymentInitiation,
@@ -24,6 +26,7 @@ from apps.payments.gateways import (
 )
 from apps.payments.models import PaymentAttempt
 from apps.payments.services import (
+    OrderNotPayable,
     PaymentVerificationInvalid,
     PaymentWindowExpired,
     initiate_order_payment,
@@ -83,6 +86,24 @@ class AmbiguousOnceGateway(FakeGateway):
         return PaymentInitiation(
             gateway_reference=reference,
             payment_url=f"https://payments.example/{reference}",
+        )
+
+
+class BlockingInitiationGateway(FakeGateway):
+    def __init__(self):
+        super().__init__()
+        self.started = Event()
+        self.release = Event()
+
+    def initiate(self, *, order_id, amount, currency, idempotency_key):
+        self.started.set()
+        if not self.release.wait(timeout=10):
+            raise TimeoutError("The test did not release payment initiation.")
+        return super().initiate(
+            order_id=order_id,
+            amount=amount,
+            currency=currency,
+            idempotency_key=idempotency_key,
         )
 
 
@@ -436,6 +457,8 @@ def test_failed_verification_allows_retry_while_order_remains_payable(
 
     assert failed.status_code == status.HTTP_200_OK
     assert failed.json()["status"] == PaymentAttempt.Status.FAILED
+    assert failed.json()["payment_url"] is None
+    assert failed.json()["payment_identifier"] is None
     assert retry.status_code == status.HTTP_201_CREATED
     assert retry.json()["id"] != first.pk
     order.refresh_from_db()
@@ -476,6 +499,11 @@ def test_expired_initiation_expires_order_releases_reservation_and_fails_pending
     assert pending.status == PaymentAttempt.Status.FAILED
     assert product.stock_quantity == 10
     assert gateway.initiations == []
+    history = OrderStatusHistory.objects.get(order=order)
+    assert history.from_status == Order.Status.PENDING_PAYMENT
+    assert history.to_status == Order.Status.EXPIRED
+    assert history.actor_type == OrderStatusHistory.ActorType.SYSTEM
+    assert history.actor_user is None
 
 
 @pytest.mark.django_db
@@ -514,9 +542,15 @@ def test_successful_verification_finalizes_order_and_stock_once(
     product.refresh_from_db()
     reservation.refresh_from_db()
     assert order.status == Order.Status.PAID
+    assert order.paid_at is not None
     assert product.stock_quantity == 8
     assert reservation.status == InventoryReservation.Status.CONSUMED
     assert len(gateway.verifications) == 1
+    history = OrderStatusHistory.objects.get(order=order)
+    assert history.from_status == Order.Status.PENDING_PAYMENT
+    assert history.to_status == Order.Status.PAID
+    assert history.actor_type == OrderStatusHistory.ActorType.SYSTEM
+    assert history.actor_user is None
 
 
 @pytest.mark.django_db
@@ -570,6 +604,53 @@ def test_success_after_expiry_cannot_pay_or_deduct_stock(payable_order, gateway)
     assert product.stock_quantity == 10
 
 
+@pytest.mark.django_db
+def test_final_deadline_rollback_refreshes_order_before_expiry(
+    payable_order,
+    gateway,
+    monkeypatch,
+):
+    order, product, reservation = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    original_validate_deadline = payment_services._validate_payment_deadline
+    calls = 0
+
+    def expire_after_temporary_paid_mutations(*, reservations, at):
+        nonlocal calls
+        calls += 1
+        if calls == 4:
+            raise PaymentWindowExpired("The order payment window has expired.")
+        return original_validate_deadline(reservations=reservations, at=at)
+
+    monkeypatch.setattr(
+        payment_services,
+        "_validate_payment_deadline",
+        expire_after_temporary_paid_mutations,
+    )
+
+    result = verify_order_payment(
+        attempt=attempt,
+        callback_data={"race": "final-deadline"},
+        gateway=gateway,
+    )
+
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt.refresh_from_db()
+    history = list(OrderStatusHistory.objects.filter(order=order))
+    assert calls == 4
+    assert result.status == PaymentAttempt.Status.FAILED
+    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert order.status == Order.Status.EXPIRED
+    assert order.paid_at is None
+    assert product.stock_quantity == 10
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert len(history) == 1
+    assert history[0].from_status == Order.Status.PENDING_PAYMENT
+    assert history[0].to_status == Order.Status.EXPIRED
+
+
 def _initiate_in_thread(order_id, gateway, barrier):
     close_old_connections()
     try:
@@ -593,6 +674,71 @@ def _initiate_after_signal(order_id, gateway, started):
         return "initiated"
     finally:
         close_old_connections()
+
+
+def _initiate_during_cancellation(order_id, gateway):
+    close_old_connections()
+    try:
+        order = Order.objects.get(pk=order_id)
+        try:
+            initiate_order_payment(order=order, gateway=gateway)
+        except OrderNotPayable:
+            return "not-payable"
+        return "initiated"
+    finally:
+        close_old_connections()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_cancellation_during_gateway_initiation_does_not_return_payment_link():
+    customer = create_customer("initiation-cancellation-race@example.com")
+    category = Category.objects.create(name="Initiation cancellation race")
+    product = Product.objects.create(
+        category=category,
+        name="Initiation cancellation product",
+        slug="initiation-cancellation-product",
+        sku="INITIATION-CANCELLATION",
+        price=Decimal("25.00"),
+        stock_quantity=10,
+        status=Product.Status.ACTIVE,
+    )
+    order = create_order(customer)
+    reservation = InventoryReservation.objects.create(
+        order=order,
+        product=product,
+        quantity=2,
+        expires_at=timezone.now() + RESERVATION_LIFETIME,
+    )
+    gateway = BlockingInitiationGateway()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            _initiate_during_cancellation,
+            order.pk,
+            gateway,
+        )
+        assert gateway.started.wait(timeout=5)
+        try:
+            cancel_order(
+                order=order,
+                actor_type=OrderStatusHistory.ActorType.CUSTOMER,
+                actor_user=customer.user,
+            )
+        finally:
+            gateway.release.set()
+        result = future.result(timeout=10)
+
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt = PaymentAttempt.objects.get(order=order)
+    assert result == "not-payable"
+    assert order.status == Order.Status.CANCELLED
+    assert order.refund_status == Order.RefundStatus.NOT_REQUIRED
+    assert product.stock_quantity == 10
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert OrderStatusHistory.objects.filter(order=order).count() == 1
 
 
 @pytest.mark.django_db(transaction=True)
@@ -827,6 +973,14 @@ def test_concurrent_successful_verification_deducts_stock_exactly_once():
         for reservation in InventoryReservation.objects.filter(
             pk__in=[item.pk for item in reservations]
         )
+    )
+    assert (
+        OrderStatusHistory.objects.filter(
+            order=order,
+            from_status=Order.Status.PENDING_PAYMENT,
+            to_status=Order.Status.PAID,
+        ).count()
+        == 1
     )
 
 
