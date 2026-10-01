@@ -142,6 +142,24 @@ The web command starts Gunicorn directly as PID 1 and never runs migrations.
 timeout. Failed migrations must stop the release; they must not be retried
 independently by every web replica.
 
+### JWT blacklist maintenance
+
+SimpleJWT keeps outstanding and blacklisted refresh-token rows after the tokens
+expire. Run its built-in cleanup command once per day against the production
+database:
+
+```bash
+python manage.py flushexpiredtokens
+```
+
+This is a periodic production maintenance operation, not a web-startup step.
+Configure the selected deployment environment's scheduler to run it from the
+same application image and with the same production settings and database
+configuration as the web service. Exactly one scheduled runner should execute
+each daily run; do not start it independently in every web replica. Scheduling
+and failure alerting remain deployment responsibilities, so this repository
+does not add Celery, cron configuration, or provider-specific infrastructure.
+
 ### Gunicorn and database runtime settings
 
 - `PORT` selects the container listen port and defaults to `8000`.

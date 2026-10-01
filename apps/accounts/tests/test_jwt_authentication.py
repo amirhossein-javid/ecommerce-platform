@@ -1,13 +1,20 @@
+from datetime import timedelta
+
 import pytest
 from django.conf import settings
+from django.core.management import call_command
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework.views import APIView
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from apps.accounts.models import User
@@ -197,6 +204,26 @@ def test_refresh_rotates_token_and_blacklists_previous_refresh(api_client, user)
     )
 
     assert reused_response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_flush_expired_tokens_removes_only_expired_blacklist_records(user):
+    expired_refresh = RefreshToken.for_user(user)
+    valid_refresh = RefreshToken.for_user(user)
+    expired_refresh.blacklist()
+    valid_refresh.blacklist()
+    expired_outstanding = OutstandingToken.objects.get(jti=expired_refresh["jti"])
+    valid_outstanding = OutstandingToken.objects.get(jti=valid_refresh["jti"])
+    OutstandingToken.objects.filter(pk=expired_outstanding.pk).update(
+        expires_at=timezone.now() - timedelta(seconds=1)
+    )
+
+    call_command("flushexpiredtokens")
+
+    assert not OutstandingToken.objects.filter(pk=expired_outstanding.pk).exists()
+    assert not BlacklistedToken.objects.filter(token_id=expired_outstanding.pk).exists()
+    assert OutstandingToken.objects.filter(pk=valid_outstanding.pk).exists()
+    assert BlacklistedToken.objects.filter(token_id=valid_outstanding.pk).exists()
 
 
 @pytest.mark.django_db
