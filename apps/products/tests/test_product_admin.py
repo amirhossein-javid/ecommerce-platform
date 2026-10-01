@@ -131,6 +131,29 @@ def test_superuser_can_open_category_and_product_admin_pages(
 
 
 @pytest.mark.django_db
+def test_category_admin_returns_parent_cycle_as_form_error(client, superuser):
+    root = Category.objects.create(name="Electronics")
+    child = Category.objects.create(name="Computers", parent=root)
+    client.force_login(superuser)
+
+    response = client.post(
+        reverse("admin:products_category_change", args=(root.pk,)),
+        {
+            "name": root.name,
+            "slug": root.slug,
+            "parent": child.pk,
+            "is_active": "on",
+            "_save": "Save",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "parent" in response.context["adminform"].form.errors
+    root.refresh_from_db()
+    assert root.parent is None
+
+
+@pytest.mark.django_db
 def test_product_changelist_displays_primary_image_thumbnail(
     client,
     superuser,

@@ -1,13 +1,18 @@
 from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import router, transaction
 from django.db.models import Prefetch, Sum
 from django.forms.models import BaseInlineFormSet
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import Category, Product, ProductImage
+from .models import (
+    Category,
+    Product,
+    ProductImage,
+    lock_category_parent_structure,
+)
 
 
 class ProductAdminForm(forms.ModelForm):
@@ -121,6 +126,25 @@ class CategoryAdmin(admin.ModelAdmin):
     )
     list_per_page = 50
     save_on_top = True
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if request.method != "POST":
+            return super().changeform_view(
+                request,
+                object_id=object_id,
+                form_url=form_url,
+                extra_context=extra_context,
+            )
+
+        using = router.db_for_write(self.model)
+        with transaction.atomic(using=using):
+            lock_category_parent_structure(using=using)
+            return super().changeform_view(
+                request,
+                object_id=object_id,
+                form_url=form_url,
+                extra_context=extra_context,
+            )
 
     def has_delete_permission(self, request, obj=None):
         return False

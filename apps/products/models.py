@@ -2,12 +2,46 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models, transaction
+from django.db import DEFAULT_DB_ALIAS, connections, models, router, transaction
 from django.db.models import F, Q
 from django.db.models.functions import Lower
 from django.utils.text import slugify
 
 from apps.common.money import validate_whole_rial
+
+_CATEGORY_PARENT_LOCK_NAMESPACE = 1_127_329_857
+_CATEGORY_PARENT_LOCK_KEY = 1
+
+
+def lock_category_parent_structure(*, using):
+    database = connections[using]
+    if not database.in_atomic_block:
+        raise RuntimeError("Category parent lock requires an active transaction.")
+    with database.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)",
+            [_CATEGORY_PARENT_LOCK_NAMESPACE, _CATEGORY_PARENT_LOCK_KEY],
+        )
+
+
+class CategoryQuerySet(models.QuerySet):
+    parent_fields = frozenset({"parent", "parent_id"})
+
+    def update(self, **kwargs):
+        if self.parent_fields.intersection(kwargs):
+            raise TypeError("Category parent changes must use Category.save().")
+        return super().update(**kwargs)
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        if self.parent_fields.intersection(fields):
+            raise TypeError("Category parent changes must use Category.save().")
+        return super().bulk_update(objs, fields, batch_size=batch_size)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        if any(category.parent_id is not None for category in objs):
+            raise TypeError("Category parents cannot be assigned with bulk_create().")
+        return super().bulk_create(objs, *args, **kwargs)
 
 
 class Category(models.Model):
@@ -28,6 +62,8 @@ class Category(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = CategoryQuerySet.as_manager()
 
     class Meta:
         constraints = [
@@ -61,10 +97,17 @@ class Category(models.Model):
             or persisted_fields is None
             or bool({"parent", "parent_id"} & persisted_fields)
         )
-        if parent_is_persisted:
-            self._validate_parent_chain()
+        if not parent_is_persisted:
+            return super().save(*args, **kwargs)
 
-        return super().save(*args, **kwargs)
+        using = kwargs.get("using") or router.db_for_write(
+            self.__class__,
+            instance=self,
+        )
+        with transaction.atomic(using=using):
+            lock_category_parent_structure(using=using)
+            self._validate_parent_chain(using=using)
+            return super().save(*args, **kwargs)
 
     def _set_slug_if_missing(self):
         if self.slug:
@@ -76,10 +119,11 @@ class Category(models.Model):
                 {"slug": "A slug could not be generated from this name."}
             )
 
-    def _validate_parent_chain(self):
+    def _validate_parent_chain(self, *, using=None):
         if self.parent_id is None:
             return
 
+        using = using or self._state.db or DEFAULT_DB_ALIAS
         ancestor_id = self.parent_id
         visited_ids = {self.pk} if self.pk is not None else set()
 
@@ -90,7 +134,8 @@ class Category(models.Model):
                 )
             visited_ids.add(ancestor_id)
             ancestor_id = (
-                self.__class__.objects.filter(pk=ancestor_id)
+                self.__class__.objects.using(using)
+                .filter(pk=ancestor_id)
                 .values_list("parent_id", flat=True)
                 .first()
             )

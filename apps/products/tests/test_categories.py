@@ -1,8 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from threading import Event
+from time import monotonic, sleep
 
 import pytest
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, connection, transaction
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 
@@ -87,7 +90,11 @@ def test_database_constraint_rejects_direct_self_parenting():
     category = Category.objects.create(name="Electronics")
 
     with pytest.raises(IntegrityError), transaction.atomic():
-        Category.objects.filter(pk=category.pk).update(parent_id=category.pk)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE products_category SET parent_id = %s WHERE id = %s",
+                [category.pk, category.pk],
+            )
 
 
 @pytest.mark.django_db
@@ -272,15 +279,145 @@ def test_save_validates_explicit_slug():
 
 
 @pytest.mark.django_db
-def test_queryset_update_bypasses_deep_cycle_validation():
+@pytest.mark.parametrize("field", ["parent", "parent_id"])
+def test_queryset_update_cannot_bypass_parent_validation(field):
     root = Category.objects.create(name="Electronics")
     child = Category.objects.create(name="Computers", parent=root)
     grandchild = Category.objects.create(name="Laptops", parent=child)
 
-    Category.objects.filter(pk=root.pk).update(parent=grandchild)
+    value = grandchild if field == "parent" else grandchild.pk
+    with pytest.raises(TypeError, match="must use Category.save"):
+        Category.objects.filter(pk=root.pk).update(**{field: value})
 
     root.refresh_from_db()
-    assert root.parent == grandchild
+    assert root.parent is None
+
+
+@pytest.mark.django_db
+def test_bulk_update_cannot_bypass_parent_validation():
+    root = Category.objects.create(name="Electronics")
+    child = Category.objects.create(name="Computers", parent=root)
+    root.parent = child
+
+    with pytest.raises(TypeError, match="must use Category.save"):
+        Category.objects.bulk_update([root], ["parent"])
+
+    root.refresh_from_db()
+    assert root.parent is None
+
+
+@pytest.mark.django_db
+def test_bulk_create_allows_roots_but_rejects_parent_assignment():
+    parent = Category.objects.create(name="Electronics")
+    root = Category(name="Home Appliances", slug="home-appliances")
+    child = Category(name="Computers", slug="computers", parent=parent)
+
+    Category.objects.bulk_create([root])
+    with pytest.raises(TypeError, match="cannot be assigned with bulk_create"):
+        Category.objects.bulk_create([child])
+
+    assert Category.objects.filter(pk=root.pk).exists() is True
+    assert Category.objects.filter(slug="computers").exists() is False
+
+
+def _save_parent_while_holding_transaction(
+    category_id,
+    parent_id,
+    saved,
+    release,
+):
+    close_old_connections()
+    try:
+        with transaction.atomic():
+            category = Category.objects.get(pk=category_id)
+            category.parent_id = parent_id
+            category.save(update_fields=["parent"])
+            saved.set()
+            if not release.wait(timeout=10):
+                raise TimeoutError("The test did not release the first transaction.")
+        return "saved"
+    finally:
+        close_old_connections()
+
+
+def _save_competing_parent(category_id, parent_id, started, backend_pid):
+    close_old_connections()
+    try:
+        category = Category.objects.get(pk=category_id)
+        category.parent_id = parent_id
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_backend_pid()")
+            backend_pid.append(cursor.fetchone()[0])
+        started.set()
+        try:
+            category.save(update_fields=["parent"])
+        except ValidationError:
+            return "cycle_rejected"
+        return "saved"
+    finally:
+        close_old_connections()
+
+
+def _wait_for_advisory_lock_waiter(backend_pid, timeout=5):
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_locks
+                    WHERE pid = %s
+                      AND locktype = 'advisory'
+                      AND NOT granted
+                )
+                """,
+                [backend_pid],
+            )
+            if cursor.fetchone()[0]:
+                return True
+        sleep(0.02)
+    return False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_parent_updates_cannot_create_two_node_cycle():
+    first = Category.objects.create(name="First")
+    second = Category.objects.create(name="Second")
+    first_saved = Event()
+    release_first = Event()
+    second_started = Event()
+    second_backend_pid = []
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(
+            _save_parent_while_holding_transaction,
+            first.pk,
+            second.pk,
+            first_saved,
+            release_first,
+        )
+        assert first_saved.wait(timeout=10)
+        second_future = executor.submit(
+            _save_competing_parent,
+            second.pk,
+            first.pk,
+            second_started,
+            second_backend_pid,
+        )
+        try:
+            assert second_started.wait(timeout=10)
+            assert _wait_for_advisory_lock_waiter(second_backend_pid[0]) is True
+        finally:
+            release_first.set()
+
+        assert first_future.result(timeout=10) == "saved"
+        assert second_future.result(timeout=10) == "cycle_rejected"
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert first.parent_id == second.pk
+    assert second.parent_id is None
 
 
 @pytest.mark.django_db
