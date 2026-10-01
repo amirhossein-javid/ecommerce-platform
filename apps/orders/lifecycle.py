@@ -6,7 +6,13 @@ from django.utils import timezone
 
 from apps.products.models import Product
 
-from .models import InventoryReservation, Order, OrderItem, OrderStatusHistory
+from .models import (
+    InventoryReservation,
+    Order,
+    OrderItem,
+    OrderStatusHistory,
+    Shipment,
+)
 
 
 class OrderLifecycleError(Exception):
@@ -26,6 +32,10 @@ class RefundResolutionError(OrderLifecycleError):
 
 
 class OrderCancellationInventoryInvalid(OrderLifecycleError):
+    pass
+
+
+class ShipmentDetailsRequired(OrderLifecycleError):
     pass
 
 
@@ -125,6 +135,10 @@ def transition_order(
             raise InvalidOrderTransition(
                 f"Expected order status {source_status}, found {locked_order.status}."
             )
+        _prepare_locked_fulfillment_transition(
+            order=locked_order,
+            to_status=target_status,
+        )
         return _apply_locked_transition(
             order=locked_order,
             from_status=source_status,
@@ -384,6 +398,27 @@ def _fail_pending_payment_attempts(*, order, at):
         order=order,
         status=PaymentAttempt.Status.PENDING,
     ).update(status=PaymentAttempt.Status.FAILED, updated_at=at)
+
+
+def _prepare_locked_fulfillment_transition(*, order, to_status):
+    if to_status == Order.Status.PROCESSING:
+        Shipment.objects.get_or_create(order=order)
+        return
+    if to_status not in (Order.Status.SHIPPED, Order.Status.DELIVERED):
+        return
+
+    try:
+        shipment = Shipment.objects.select_for_update().get(order=order)
+    except Shipment.DoesNotExist as exc:
+        raise ShipmentDetailsRequired(
+            "The order does not have a shipment record."
+        ) from exc
+    if to_status == Order.Status.SHIPPED and (
+        not shipment.carrier.strip() or not shipment.tracking_number.strip()
+    ):
+        raise ShipmentDetailsRequired(
+            "Carrier and tracking number are required before shipping."
+        )
 
 
 def _matching_transition_exists(

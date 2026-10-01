@@ -16,7 +16,7 @@ from apps.orders.lifecycle import (
     resolve_order_refund,
     transition_order,
 )
-from apps.orders.models import Order, OrderStatusHistory
+from apps.orders.models import Order, OrderStatusHistory, Shipment
 from apps.payments.models import PaymentAttempt
 
 
@@ -62,6 +62,12 @@ def create_order(customer, *, status=Order.Status.PENDING_PAYMENT):
 def test_every_operator_transition_creates_one_history(from_status, to_status):
     operator = create_operator()
     order = create_order(create_customer(), status=from_status)
+    if to_status in (Order.Status.SHIPPED, Order.Status.DELIVERED):
+        Shipment.objects.create(
+            order=order,
+            carrier="Test carrier",
+            tracking_number="TRACK-001",
+        )
 
     result = transition_order(
         order=order,
@@ -189,6 +195,10 @@ def test_lifecycle_timestamps_and_same_command_idempotency():
         actor_user=operator,
         at=processing_at,
     )
+    shipment = order.shipment
+    shipment.carrier = "Test carrier"
+    shipment.tracking_number = "TRACK-001"
+    shipment.save()
     transition_order(
         order=order,
         from_status=Order.Status.PROCESSING,

@@ -1,8 +1,9 @@
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
@@ -182,6 +183,40 @@ class Order(models.Model):
 
     def __str__(self):
         return f"Order {self.pk} ({self.status})"
+
+
+class Shipment(models.Model):
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.PROTECT,
+        related_name="shipment",
+    )
+    carrier = models.CharField(max_length=100, blank=True)
+    tracking_number = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Shipment for order {self.order_id}"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            return super().save(*args, **kwargs)
+
+        with transaction.atomic():
+            locked_order = Order.objects.select_for_update().get(pk=self.order_id)
+            if locked_order.status != Order.Status.PROCESSING:
+                raise ValidationError(
+                    "Shipment details can only be changed while the order "
+                    "is processing."
+                )
+            self.carrier = self.carrier.strip()
+            self.tracking_number = self.tracking_number.strip()
+            if not self.carrier or not self.tracking_number:
+                raise ValidationError(
+                    "Carrier and tracking number are required for shipment."
+                )
+            return super().save(*args, **kwargs)
 
 
 class AppendOnlyOrderStatusHistoryQuerySet(models.QuerySet):
