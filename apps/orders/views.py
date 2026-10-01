@@ -2,7 +2,7 @@ from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound
-from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -10,7 +10,8 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import CustomerProfile
 
-from .models import InventoryReservation, Order, OrderItem
+from .lifecycle import OrderLifecycleError, cancel_order
+from .models import InventoryReservation, Order, OrderItem, OrderStatusHistory
 from .serializers import (
     CheckoutErrorSerializer,
     CheckoutOrderSerializer,
@@ -18,6 +19,7 @@ from .serializers import (
     CheckoutValidationErrorSerializer,
     CustomerOrderDetailSerializer,
     CustomerOrderListSerializer,
+    OrderCancellationSerializer,
 )
 from .services import (
     CheckoutAddressUnavailable,
@@ -99,6 +101,37 @@ class CustomerOrderDetailView(CustomerOrderMixin, RetrieveAPIView):
                 Prefetch("items", queryset=OrderItem.objects.order_by("pk"))
             )
         )
+
+
+class CustomerOrderCancellationView(CustomerOrderMixin, GenericAPIView):
+    serializer_class = OrderCancellationSerializer
+
+    @extend_schema(
+        request=None,
+        responses={
+            status.HTTP_200_OK: OrderCancellationSerializer,
+            status.HTTP_401_UNAUTHORIZED: CheckoutErrorSerializer,
+            status.HTTP_404_NOT_FOUND: CheckoutErrorSerializer,
+            status.HTTP_409_CONFLICT: CheckoutErrorSerializer,
+        },
+        description=(
+            "Cancel an owned pending-payment, paid, or processing order. "
+            "The operation is idempotent for the same customer command."
+        ),
+        tags=["Orders"],
+    )
+    def post(self, request, pk):
+        order = self.get_object()
+        try:
+            result = cancel_order(
+                order=order,
+                actor_type=OrderStatusHistory.ActorType.CUSTOMER,
+                actor_user=request.user,
+            )
+        except OrderLifecycleError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+
+        return Response(OrderCancellationSerializer(result.order).data)
 
 
 class CheckoutView(APIView):

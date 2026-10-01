@@ -103,6 +103,18 @@ class CheckoutErrorSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
+class OrderCancellationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = (
+            "id",
+            "status",
+            "refund_status",
+            "cancelled_at",
+        )
+        read_only_fields = fields
+
+
 class CustomerOrderListSerializer(serializers.ModelSerializer):
     subtotal = serializers.DecimalField(
         max_digits=22,

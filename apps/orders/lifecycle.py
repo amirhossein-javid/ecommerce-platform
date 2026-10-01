@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
-from .models import Order, OrderStatusHistory
+from apps.products.models import Product
+
+from .models import InventoryReservation, Order, OrderItem, OrderStatusHistory
 
 
 class OrderLifecycleError(Exception):
@@ -19,6 +22,10 @@ class InvalidOrderTransitionActor(OrderLifecycleError):
 
 
 class RefundResolutionError(OrderLifecycleError):
+    pass
+
+
+class OrderCancellationInventoryInvalid(OrderLifecycleError):
     pass
 
 
@@ -73,6 +80,18 @@ def transition_order(
     """Run one customer/operator lifecycle command against fresh locked state."""
     source_status = _normalize_status(from_status)
     target_status = _normalize_status(to_status)
+    if target_status == Order.Status.CANCELLED:
+        if target_status not in ALLOWED_TRANSITIONS[source_status]:
+            raise InvalidOrderTransition(
+                f"Order cannot transition from {source_status} to {target_status}."
+            )
+        return cancel_order(
+            order=order,
+            actor_type=actor_type,
+            actor_user=actor_user,
+            expected_status=source_status,
+            at=at,
+        )
     if target_status in _COMPOUND_SYSTEM_TARGETS:
         raise InvalidOrderTransition(
             f"The {target_status} transition requires its aggregate workflow."
@@ -113,6 +132,100 @@ def transition_order(
             actor_type=normalized_actor_type,
             actor_user=actor_user,
             at=at,
+        )
+
+
+def cancel_order(
+    *,
+    order,
+    actor_type,
+    actor_user,
+    expected_status=None,
+    at=None,
+):
+    """Cancel an eligible order and apply all inventory/payment side effects."""
+    normalized_expected_status = (
+        _normalize_status(expected_status) if expected_status is not None else None
+    )
+    cancellable_statuses = (
+        Order.Status.PENDING_PAYMENT,
+        Order.Status.PAID,
+        Order.Status.PROCESSING,
+    )
+
+    with transaction.atomic():
+        locked_order = Order.objects.select_for_update().get(pk=order.pk)
+        normalized_actor_type = _validate_public_actor(
+            order=locked_order,
+            to_status=Order.Status.CANCELLED,
+            actor_type=actor_type,
+            actor_user=actor_user,
+        )
+
+        if locked_order.status == Order.Status.CANCELLED:
+            matching_sources = (
+                (normalized_expected_status,)
+                if normalized_expected_status is not None
+                else cancellable_statuses
+            )
+            if OrderStatusHistory.objects.filter(
+                order=locked_order,
+                from_status__in=matching_sources,
+                to_status=Order.Status.CANCELLED,
+                actor_type=normalized_actor_type,
+                actor_user=actor_user,
+            ).exists():
+                return OrderTransitionResult(order=locked_order, changed=False)
+            raise InvalidOrderTransition(
+                "The order was cancelled through a different command."
+            )
+
+        if (
+            normalized_expected_status is not None
+            and locked_order.status != normalized_expected_status
+        ):
+            raise InvalidOrderTransition(
+                "Expected order status "
+                f"{normalized_expected_status}, found {locked_order.status}."
+            )
+        if locked_order.status not in cancellable_statuses:
+            raise InvalidOrderTransition(
+                f"Order cannot transition from {locked_order.status} to "
+                f"{Order.Status.CANCELLED}."
+            )
+
+        cancellation_time = at or timezone.now()
+        source_status = locked_order.status
+        _lock_order_payment_attempts(locked_order)
+        reservations = _lock_order_reservations(locked_order)
+        products_with_quantities = (
+            _lock_products_for_stock_restoration(locked_order)
+            if source_status in (Order.Status.PAID, Order.Status.PROCESSING)
+            else ()
+        )
+
+        _fail_pending_payment_attempts(
+            order=locked_order,
+            at=cancellation_time,
+        )
+        InventoryReservation.objects.filter(
+            pk__in=[reservation.pk for reservation in reservations],
+            status=InventoryReservation.Status.ACTIVE,
+        ).update(
+            status=InventoryReservation.Status.RELEASED,
+            updated_at=cancellation_time,
+        )
+        for product, quantity in products_with_quantities:
+            product.stock_quantity += quantity
+            product.save(update_fields=("stock_quantity", "updated_at"))
+
+        return _apply_locked_transition(
+            order=locked_order,
+            from_status=source_status,
+            to_status=Order.Status.CANCELLED,
+            actor_type=normalized_actor_type,
+            actor_user=actor_user,
+            at=cancellation_time,
         )
 
 
@@ -224,6 +337,53 @@ def resolve_order_refund(*, order, operator, at=None):
             )
         )
         return OrderTransitionResult(order=locked_order, changed=True)
+
+
+def _lock_order_payment_attempts(order):
+    from apps.payments.models import PaymentAttempt
+
+    return list(
+        PaymentAttempt.objects.select_for_update().filter(order=order).order_by("pk")
+    )
+
+
+def _lock_order_reservations(order):
+    return list(
+        InventoryReservation.objects.select_for_update()
+        .filter(order=order)
+        .order_by("pk")
+    )
+
+
+def _lock_products_for_stock_restoration(order):
+    quantities = dict(
+        OrderItem.objects.filter(order=order)
+        .values("product_id")
+        .annotate(quantity=Sum("quantity"))
+        .values_list("product_id", "quantity")
+    )
+    if None in quantities:
+        raise OrderCancellationInventoryInvalid(
+            "The order inventory can no longer be restored."
+        )
+
+    products = list(
+        Product.objects.select_for_update().filter(pk__in=quantities).order_by("pk")
+    )
+    if len(products) != len(quantities):
+        raise OrderCancellationInventoryInvalid(
+            "The order inventory can no longer be restored."
+        )
+    return tuple((product, quantities[product.pk]) for product in products)
+
+
+def _fail_pending_payment_attempts(*, order, at):
+    from apps.payments.models import PaymentAttempt
+
+    PaymentAttempt.objects.filter(
+        order=order,
+        status=PaymentAttempt.Status.PENDING,
+    ).update(status=PaymentAttempt.Status.FAILED, updated_at=at)
 
 
 def _matching_transition_exists(
