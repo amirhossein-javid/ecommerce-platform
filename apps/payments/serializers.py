@@ -13,7 +13,11 @@ class PaymentAttemptSerializer(serializers.ModelSerializer):
         decimal_places=0,
         read_only=True,
     )
-    payment_url = serializers.URLField(read_only=True, allow_null=True)
+    payment_url = serializers.URLField(
+        source="customer_payment_url",
+        read_only=True,
+        allow_null=True,
+    )
     payment_identifier = serializers.CharField(
         source="customer_payment_identifier",
         max_length=255,

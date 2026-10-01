@@ -117,8 +117,14 @@ class PaymentAttempt(models.Model):
         return f"Payment attempt {self.pk} for order {self.order_id} ({self.status})"
 
     @property
+    def customer_payment_url(self):
+        if self.status == self.Status.PENDING:
+            return self.payment_url
+        return None
+
+    @property
     def customer_payment_identifier(self):
-        if self.gateway == "bale":
+        if self.status == self.Status.PENDING and self.gateway == "bale":
             return self.gateway_reference
         return None
 

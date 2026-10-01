@@ -70,6 +70,8 @@ def initiate_order_payment(*, order, at=None, gateway=None):
     )
     if expired:
         raise PaymentWindowExpired("The order payment window has expired.")
+    if attempt.status != PaymentAttempt.Status.PENDING:
+        raise OrderNotPayable("The payment attempt is no longer pending.")
     return attempt, attempt.payment_url, created
 
 
