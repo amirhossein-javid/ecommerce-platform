@@ -1,3 +1,4 @@
+import logging
 from enum import StrEnum
 
 from django.db import transaction
@@ -8,8 +9,10 @@ from apps.orders.lifecycle import _mark_locked_order_expired, _mark_locked_order
 from apps.orders.models import InventoryReservation, Order
 from apps.products.models import Product
 
-from .gateways import VerificationStatus, get_payment_gateway
+from .gateways import PaymentGatewayError, VerificationStatus, get_payment_gateway
 from .models import PaymentAttempt
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentError(Exception):
@@ -52,12 +55,23 @@ def initiate_order_payment(*, order, at=None, gateway=None):
     if attempt.payment_url:
         raise PaymentVerificationInvalid("Payment initiation state is incomplete.")
 
-    initiation = gateway.initiate(
-        order_id=attempt.order_id,
-        amount=attempt.amount,
-        currency=attempt.currency,
-        idempotency_key=attempt.idempotency_key,
-    )
+    try:
+        initiation = gateway.initiate(
+            order_id=attempt.order_id,
+            amount=attempt.amount,
+            currency=attempt.currency,
+            idempotency_key=attempt.idempotency_key,
+        )
+    except PaymentGatewayError as exc:
+        logger.warning(
+            "payment_initiation_gateway_failed order_id=%s "
+            "payment_attempt_id=%s gateway=%s failure_category=%s",
+            attempt.order_id,
+            attempt.pk,
+            attempt.gateway,
+            type(exc).__name__,
+        )
+        raise
     if not initiation.gateway_reference:
         raise PaymentVerificationInvalid(
             "The gateway returned invalid payment initiation data."
@@ -72,6 +86,19 @@ def initiate_order_payment(*, order, at=None, gateway=None):
         raise PaymentWindowExpired("The order payment window has expired.")
     if attempt.status != PaymentAttempt.Status.PENDING:
         raise OrderNotPayable("The payment attempt is no longer pending.")
+    order_id = attempt.order_id
+    attempt_id = attempt.pk
+    gateway_name = attempt.gateway
+    transaction.on_commit(
+        lambda: logger.info(
+            "payment_initiation_committed order_id=%s payment_attempt_id=%s "
+            "gateway=%s attempt_created=%s",
+            order_id,
+            attempt_id,
+            gateway_name,
+            created,
+        )
+    )
     return attempt, attempt.payment_url, created
 
 
@@ -86,10 +113,21 @@ def verify_order_payment(*, attempt, callback_data, at=None, gateway=None):
     if attempt.gateway != gateway.name:
         raise PaymentVerificationInvalid("The payment gateway does not match.")
 
-    verification = gateway.verify(
-        gateway_reference=attempt.gateway_reference,
-        callback_data=callback_data,
-    )
+    try:
+        verification = gateway.verify(
+            gateway_reference=attempt.gateway_reference,
+            callback_data=callback_data,
+        )
+    except PaymentGatewayError as exc:
+        logger.warning(
+            "payment_verification_gateway_failed order_id=%s "
+            "payment_attempt_id=%s gateway=%s failure_category=%s",
+            attempt.order_id,
+            attempt.pk,
+            attempt.gateway,
+            type(exc).__name__,
+        )
+        raise
     if verification.gateway_reference != attempt.gateway_reference:
         raise PaymentVerificationInvalid(
             "The verified payment reference does not match."
@@ -324,6 +362,18 @@ def finalize_verified_payment(
         if verification.status == VerificationStatus.FAILED:
             locked_attempt.status = PaymentAttempt.Status.FAILED
             locked_attempt.save(update_fields=("status", "updated_at"))
+            order_id = locked_order.pk
+            attempt_id = locked_attempt.pk
+            gateway_name = locked_attempt.gateway
+            transaction.on_commit(
+                lambda: logger.warning(
+                    "payment_finalization_committed order_id=%s "
+                    "payment_attempt_id=%s gateway=%s outcome=failed",
+                    order_id,
+                    attempt_id,
+                    gateway_name,
+                )
+            )
             return locked_attempt
 
         products = list(
@@ -333,6 +383,12 @@ def finalize_verified_payment(
         )
         products_by_id = {product.pk: product for product in products}
         if len(products_by_id) != len(reservations):
+            logger.warning(
+                "payment_finalization_rejected order_id=%s payment_attempt_id=%s "
+                "failure_category=incomplete_reserved_inventory",
+                locked_order.pk,
+                locked_attempt.pk,
+            )
             raise PaymentInventoryInvalid("Reserved inventory is incomplete.")
 
         try:
@@ -343,10 +399,20 @@ def finalize_verified_payment(
                     reservations=reservations,
                     at=finalization_time,
                 )
-                _deduct_locked_stock(
-                    products_by_id=products_by_id,
-                    reservations=reservations,
-                )
+                try:
+                    _deduct_locked_stock(
+                        products_by_id=products_by_id,
+                        reservations=reservations,
+                    )
+                except PaymentInventoryInvalid:
+                    logger.warning(
+                        "payment_finalization_rejected order_id=%s "
+                        "payment_attempt_id=%s "
+                        "failure_category=insufficient_physical_stock",
+                        locked_order.pk,
+                        locked_attempt.pk,
+                    )
+                    raise
 
                 completion_time = at or timezone.now()
                 _validate_order_is_payable(
@@ -381,6 +447,25 @@ def finalize_verified_payment(
                 _validate_payment_deadline(
                     reservations=reservations,
                     at=commit_decision_time,
+                )
+                order_id = locked_order.pk
+                attempt_id = locked_attempt.pk
+                gateway_name = locked_attempt.gateway
+                deducted_quantity = sum(
+                    reservation.quantity for reservation in reservations
+                )
+                product_count = len(products_by_id)
+                transaction.on_commit(
+                    lambda: logger.info(
+                        "payment_finalization_committed order_id=%s "
+                        "payment_attempt_id=%s gateway=%s outcome=success "
+                        "deducted_product_count=%s deducted_quantity=%s",
+                        order_id,
+                        attempt_id,
+                        gateway_name,
+                        product_count,
+                        deducted_quantity,
+                    )
                 )
         except PaymentWindowExpired:
             expiry_time = at or timezone.now()
@@ -512,15 +597,25 @@ def _validate_payment_deadline(*, reservations, at):
 
 
 def _expire_locked_order(*, order, at):
-    InventoryReservation.objects.filter(
+    released_reservation_count = InventoryReservation.objects.filter(
         order=order,
         status=InventoryReservation.Status.ACTIVE,
     ).update(status=InventoryReservation.Status.RELEASED, updated_at=at)
-    PaymentAttempt.objects.filter(
+    failed_attempt_count = PaymentAttempt.objects.filter(
         order=order,
         status=PaymentAttempt.Status.PENDING,
     ).update(status=PaymentAttempt.Status.FAILED, updated_at=at)
     _mark_locked_order_expired(
         order=order,
         at=at,
+    )
+    order_id = order.pk
+    transaction.on_commit(
+        lambda: logger.warning(
+            "payment_window_expired_committed order_id=%s "
+            "released_reservation_count=%s failed_payment_attempt_count=%s",
+            order_id,
+            released_reservation_count,
+            failed_attempt_count,
+        )
     )

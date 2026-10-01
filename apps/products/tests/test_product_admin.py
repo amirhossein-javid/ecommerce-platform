@@ -1,11 +1,14 @@
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from django.contrib import admin
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from django.utils import timezone
 
-from apps.accounts.models import User
+from apps.accounts.models import CustomerProfile, User
+from apps.orders.models import InventoryReservation, Order
 from apps.products.admin import CategoryAdmin, ProductAdmin, ProductImageInline
 from apps.products.models import Category, Product, ProductImage
 
@@ -252,3 +255,47 @@ def test_admin_inline_deleting_primary_promotes_lowest_position(
     assert lowest.is_primary is True
     assert lowest.alt_text == "Updated front view"
     assert other.is_primary is False
+
+
+@pytest.mark.django_db
+def test_admin_cannot_reduce_stock_below_active_reservations(
+    client,
+    superuser,
+    product,
+):
+    customer = CustomerProfile.objects.create(
+        user=User.objects.create_user("customer@example.com")
+    )
+    order = Order.objects.create(
+        customer=customer,
+        subtotal=Decimal("1299"),
+        grand_total=Decimal("1299"),
+        shipping_recipient_first_name="Customer",
+        shipping_recipient_last_name="Name",
+        shipping_recipient_phone_number="+989121234567",
+        shipping_province="Tehran",
+        shipping_city="Tehran",
+        shipping_address="Address",
+        shipping_postal_code="1234567890",
+    )
+    product.stock_quantity = 10
+    product.save(update_fields=("stock_quantity",))
+    InventoryReservation.objects.create(
+        order=order,
+        product=product,
+        quantity=6,
+        expires_at=timezone.now() + timedelta(minutes=15),
+    )
+    client.force_login(superuser)
+    data = product_form_data(product, [])
+    data["stock_quantity"] = 5
+
+    response = client.post(
+        reverse("admin:products_product_change", args=(product.pk,)),
+        data,
+    )
+
+    assert response.status_code == 200
+    assert b"Stock cannot be lower" in response.content
+    product.refresh_from_db()
+    assert product.stock_quantity == 10

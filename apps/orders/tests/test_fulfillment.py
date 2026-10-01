@@ -359,6 +359,8 @@ def test_order_and_shipment_use_restricted_custom_admins():
         "mark_processing",
         "mark_shipped",
         "mark_delivered",
+        "cancel_orders",
+        "resolve_refunds",
     )
 
 

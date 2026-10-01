@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
@@ -46,6 +47,52 @@ def create_order(customer, *, status=Order.Status.PENDING_PAYMENT):
         shipping_address="Lifecycle address",
         shipping_postal_code="1234567890",
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_transition_success_logging_waits_for_commit_and_is_discarded_on_rollback(
+    caplog,
+):
+    operator = create_operator()
+    committed_order = create_order(create_customer(), status=Order.Status.PAID)
+    caplog.set_level(logging.INFO, logger="apps.orders.lifecycle")
+
+    with transaction.atomic():
+        transition_order(
+            order=committed_order,
+            from_status=Order.Status.PAID,
+            to_status=Order.Status.PROCESSING,
+            actor_type=OrderStatusHistory.ActorType.OPERATOR,
+            actor_user=operator,
+        )
+        assert "order_transition_committed" not in caplog.text
+
+    assert "order_transition_committed" in caplog.text
+    assert f"order_id={committed_order.pk}" in caplog.text
+    assert "previous_status=PAID" in caplog.text
+    assert "new_status=PROCESSING" in caplog.text
+    assert "actor_type=OPERATOR" in caplog.text
+    assert f"actor_user_id={operator.pk}" in caplog.text
+
+    rolled_back_order = create_order(
+        create_customer("rollback-customer@example.com"),
+        status=Order.Status.PAID,
+    )
+    caplog.clear()
+    with pytest.raises(RuntimeError, match="rollback test"):
+        with transaction.atomic():
+            transition_order(
+                order=rolled_back_order,
+                from_status=Order.Status.PAID,
+                to_status=Order.Status.PROCESSING,
+                actor_type=OrderStatusHistory.ActorType.OPERATOR,
+                actor_user=operator,
+            )
+            raise RuntimeError("rollback test")
+
+    assert "order_transition_committed" not in caplog.text
+    rolled_back_order.refresh_from_db()
+    assert rolled_back_order.status == Order.Status.PAID
 
 
 @pytest.mark.django_db

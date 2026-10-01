@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 
 from django.db import transaction
@@ -13,6 +14,8 @@ from .models import (
     OrderStatusHistory,
     Shipment,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class OrderLifecycleError(Exception):
@@ -218,11 +221,11 @@ def cancel_order(
             else ()
         )
 
-        _fail_pending_payment_attempts(
+        failed_payment_attempt_count = _fail_pending_payment_attempts(
             order=locked_order,
             at=cancellation_time,
         )
-        InventoryReservation.objects.filter(
+        released_reservation_count = InventoryReservation.objects.filter(
             pk__in=[reservation.pk for reservation in reservations],
             status=InventoryReservation.Status.ACTIVE,
         ).update(
@@ -233,7 +236,7 @@ def cancel_order(
             product.stock_quantity += quantity
             product.save(update_fields=("stock_quantity", "updated_at"))
 
-        return _apply_locked_transition(
+        result = _apply_locked_transition(
             order=locked_order,
             from_status=source_status,
             to_status=Order.Status.CANCELLED,
@@ -241,6 +244,29 @@ def cancel_order(
             actor_user=actor_user,
             at=cancellation_time,
         )
+        restored_quantity = sum(quantity for _, quantity in products_with_quantities)
+        order_id = locked_order.pk
+        actor_user_id = actor_user.pk
+        refund_status = locked_order.refund_status
+        restored_product_count = len(products_with_quantities)
+        transaction.on_commit(
+            lambda: logger.info(
+                "order_cancellation_effects_committed order_id=%s actor_type=%s "
+                "actor_user_id=%s previous_status=%s refund_status=%s "
+                "restored_product_count=%s restored_quantity=%s "
+                "released_reservation_count=%s failed_payment_attempt_count=%s",
+                order_id,
+                normalized_actor_type,
+                actor_user_id,
+                source_status,
+                refund_status,
+                restored_product_count,
+                restored_quantity,
+                released_reservation_count,
+                failed_payment_attempt_count,
+            )
+        )
+        return result
 
 
 def _mark_locked_order_paid(*, order, at):
@@ -319,6 +345,19 @@ def _apply_locked_transition(
         actor_user=actor_user,
         created_at=transition_time,
     )
+    order_id = order.pk
+    actor_user_id = actor_user.pk if actor_user is not None else None
+    transaction.on_commit(
+        lambda: logger.info(
+            "order_transition_committed order_id=%s previous_status=%s "
+            "new_status=%s actor_type=%s actor_user_id=%s",
+            order_id,
+            from_status,
+            to_status,
+            actor_type,
+            actor_user_id,
+        )
+    )
     return OrderTransitionResult(order=order, changed=True)
 
 
@@ -350,6 +389,16 @@ def resolve_order_refund(*, order, operator, at=None):
                 "updated_at",
             )
         )
+        order_id = locked_order.pk
+        operator_id = operator.pk
+        transaction.on_commit(
+            lambda: logger.info(
+                "order_refund_resolved order_id=%s operator_id=%s refund_status=%s",
+                order_id,
+                operator_id,
+                Order.RefundStatus.RESOLVED,
+            )
+        )
         return OrderTransitionResult(order=locked_order, changed=True)
 
 
@@ -377,6 +426,11 @@ def _lock_products_for_stock_restoration(order):
         .values_list("product_id", "quantity")
     )
     if None in quantities:
+        logger.warning(
+            "order_inventory_restoration_rejected order_id=%s "
+            "failure_category=missing_product_reference",
+            order.pk,
+        )
         raise OrderCancellationInventoryInvalid(
             "The order inventory can no longer be restored."
         )
@@ -385,6 +439,11 @@ def _lock_products_for_stock_restoration(order):
         Product.objects.select_for_update().filter(pk__in=quantities).order_by("pk")
     )
     if len(products) != len(quantities):
+        logger.warning(
+            "order_inventory_restoration_rejected order_id=%s "
+            "failure_category=missing_product",
+            order.pk,
+        )
         raise OrderCancellationInventoryInvalid(
             "The order inventory can no longer be restored."
         )
@@ -394,7 +453,7 @@ def _lock_products_for_stock_restoration(order):
 def _fail_pending_payment_attempts(*, order, at):
     from apps.payments.models import PaymentAttempt
 
-    PaymentAttempt.objects.filter(
+    return PaymentAttempt.objects.filter(
         order=order,
         status=PaymentAttempt.Status.PENDING,
     ).update(status=PaymentAttempt.Status.FAILED, updated_at=at)
