@@ -18,6 +18,10 @@ The API is available at `http://localhost:8000`. Useful endpoints:
 - OpenAPI schema: `GET /api/schema/`
 - Swagger UI: `GET /api/docs/`
 
+Development Compose intentionally applies migrations before starting Django's
+development server. This behavior is confined to `compose.yaml`; the production
+image never runs migrations as part of web startup.
+
 ## Quality checks
 
 Run these inside the web container:
@@ -72,6 +76,93 @@ Set `DJANGO_TRUST_X_FORWARDED_PROTO=True` only when Django runs behind a trusted
 reverse proxy that strips any client-supplied `X-Forwarded-Proto` header and
 sets it from the actual connection. Leave it disabled when that assumption does
 not hold. No proxy vendor or network topology is assumed by the application.
+
+## Production image and deployment lifecycle
+
+The default Docker build installs production requirements, collects immutable
+static assets, and creates a non-root image. It does not contact PostgreSQL or
+embed deployment credentials while building:
+
+```bash
+docker build -t ecommerce-api .
+```
+
+Provide the required production settings described above through the deployment
+environment or secret manager. The image defaults to
+`DJANGO_SETTINGS_MODULE=config.settings.production`; keep that value explicit in
+the production environment so one-off management commands and web replicas use
+the same settings. Development Compose overrides it with the development
+settings. Then use this provider-neutral release sequence:
+
+1. Run migrations once as an explicit release operation from the same image:
+
+   ```bash
+   docker run --rm --env-file /secure/path/production.env \
+     ecommerce-api python manage.py migrate --noinput
+   ```
+
+2. Start or roll out web replicas only after the migration succeeds:
+
+   ```bash
+   docker run --rm --env-file /secure/path/production.env \
+     -p 8000:8000 ecommerce-api
+   ```
+
+The web command starts Gunicorn directly as PID 1 and never runs migrations.
+`SIGTERM` initiates Gunicorn's graceful shutdown, with a 30-second graceful
+timeout. Failed migrations must stop the release; they must not be retried
+independently by every web replica.
+
+### Gunicorn and database runtime settings
+
+- `PORT` selects the container listen port and defaults to `8000`.
+- `WEB_CONCURRENCY` controls Gunicorn worker count and defaults to Gunicorn's
+  conservative single worker. Set it only after measuring memory, CPU, request
+  latency, and available PostgreSQL connections in the chosen environment.
+- Gunicorn request and graceful-shutdown timeouts default to 30 seconds.
+  `GUNICORN_CMD_ARGS` may override supported Gunicorn settings when a measured
+  deployment requirement justifies it.
+- Access and error logs go to stdout/stderr. The access format excludes query
+  strings, referrers, and user-agent values.
+- `DJANGO_DB_CONN_MAX_AGE` controls persistent PostgreSQL connection lifetime
+  and defaults to `60` seconds. Set it lower than any provider-enforced idle
+  connection timeout, or use `0` to disable connection reuse. Django connection
+  health checks are enabled whenever production connections are reused.
+
+No database pool size or Gunicorn worker formula is imposed because both depend
+on the eventual database connection limit and container resources.
+
+### Static and uploaded media
+
+`collectstatic` runs during the image build using non-secret, build-only Django
+configuration. Production uses WhiteNoise with compressed, manifest-hashed
+static files, so all web replicas serve the same immutable files included in the
+image. Do not run `collectstatic` independently on each production replica.
+
+Uploaded media under `MEDIA_ROOT` is different: the current filesystem storage
+is not durable across container replacement and is not safe to treat as shared
+storage across replicas. Before accepting durable production uploads, the
+deployment must provide persistent shared media storage or the project must be
+configured with an appropriate external storage backend. No storage provider is
+selected here.
+
+### Health probes
+
+The image's Docker healthcheck calls the existing dependency-free liveness
+endpoint inside the container:
+
+```text
+GET /api/v1/health/
+```
+
+The deployment platform should use `GET /api/v1/health/` for process/container
+liveness and `GET /api/v1/health/readiness/` for readiness or traffic gating.
+Readiness performs one PostgreSQL `SELECT 1`; neither probe contacts Bale or any
+other third party. The exact liveness path is the only production endpoint
+exempt from HTTP-to-HTTPS redirection so the container-internal probe does not
+depend on reverse-proxy trust configuration; readiness and all normal endpoints
+retain HTTPS enforcement. Configure the probe host consistently with
+`DJANGO_ALLOWED_HOSTS`.
 
 ## Manual Bale test-payment smoke test
 

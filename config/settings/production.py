@@ -119,11 +119,26 @@ except (ImproperlyConfigured, KeyError, ValueError):
 if database_config["ENGINE"] != "django.db.backends.postgresql":
     _configuration_error("DATABASE_URL", "use the PostgreSQL backend")
 DATABASES = {"default": database_config}
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("DJANGO_DB_CONN_MAX_AGE", default=60)
+if DATABASES["default"]["CONN_MAX_AGE"] < 0:
+    _configuration_error("DJANGO_DB_CONN_MAX_AGE", "be zero or a positive integer")
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+
+MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")  # noqa: F405
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 SECURE_SSL_REDIRECT = True
+SECURE_REDIRECT_EXEMPT = [r"^api/v1/health/$"]
 SECURE_HSTS_SECONDS = env.int("DJANGO_SECURE_HSTS_SECONDS", default=3600)
 if SECURE_HSTS_SECONDS <= 0:
     _configuration_error("DJANGO_SECURE_HSTS_SECONDS", "be greater than zero")

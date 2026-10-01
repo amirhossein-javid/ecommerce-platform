@@ -19,9 +19,10 @@ PRODUCTION_ENV = {
     "DJANGO_SECURE_HSTS_SECONDS": "3600",
     "DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS": "False",
     "DJANGO_SECURE_HSTS_PRELOAD": "False",
-    "DJANGO_TRUST_X_FORWARDED_PROTO": "True",
+    "DJANGO_TRUST_X_FORWARDED_PROTO": "False",
     "DJANGO_LOG_LEVEL": "WARNING",
     "DJANGO_APP_LOG_LEVEL": "INFO",
+    "DJANGO_DB_CONN_MAX_AGE": "60",
     "DATABASE_URL": "postgresql://app:strong-password@database.example.com/store",
 }
 
@@ -66,6 +67,7 @@ print(json.dumps({
     "CORS_URLS_REGEX": settings.CORS_URLS_REGEX,
     "CORS_ALLOW_HEADERS": settings.CORS_ALLOW_HEADERS,
     "SECURE_SSL_REDIRECT": settings.SECURE_SSL_REDIRECT,
+    "SECURE_REDIRECT_EXEMPT": settings.SECURE_REDIRECT_EXEMPT,
     "SECURE_HSTS_SECONDS": settings.SECURE_HSTS_SECONDS,
     "SECURE_HSTS_INCLUDE_SUBDOMAINS": settings.SECURE_HSTS_INCLUDE_SUBDOMAINS,
     "SECURE_HSTS_PRELOAD": settings.SECURE_HSTS_PRELOAD,
@@ -75,9 +77,14 @@ print(json.dumps({
     "CSRF_COOKIE_SECURE": settings.CSRF_COOKIE_SECURE,
     "CSRF_COOKIE_HTTPONLY": settings.CSRF_COOKIE_HTTPONLY,
     "CSRF_COOKIE_SAMESITE": settings.CSRF_COOKIE_SAMESITE,
-    "SECURE_PROXY_SSL_HEADER": settings.SECURE_PROXY_SSL_HEADER,
+    "SECURE_PROXY_SSL_HEADER": getattr(settings, "SECURE_PROXY_SSL_HEADER", None),
     "DJANGO_LOG_LEVEL": settings.LOGGING["loggers"]["django"]["level"],
     "APP_LOG_LEVEL": settings.LOGGING["loggers"]["apps"]["level"],
+    "DB_CONN_MAX_AGE": settings.DATABASES["default"]["CONN_MAX_AGE"],
+    "DB_CONN_HEALTH_CHECKS": settings.DATABASES["default"]["CONN_HEALTH_CHECKS"],
+    "MIDDLEWARE": settings.MIDDLEWARE,
+    "DEFAULT_STORAGE": settings.STORAGES["default"]["BACKEND"],
+    "STATIC_STORAGE": settings.STORAGES["staticfiles"]["BACKEND"],
 }))
 """
     return subprocess.run(
@@ -111,6 +118,7 @@ def test_production_settings_apply_security_contract():
             "x-requested-with",
         ],
         "SECURE_SSL_REDIRECT": True,
+        "SECURE_REDIRECT_EXEMPT": ["^api/v1/health/$"],
         "SECURE_HSTS_SECONDS": 3600,
         "SECURE_HSTS_INCLUDE_SUBDOMAINS": False,
         "SECURE_HSTS_PRELOAD": False,
@@ -120,9 +128,24 @@ def test_production_settings_apply_security_contract():
         "CSRF_COOKIE_SECURE": True,
         "CSRF_COOKIE_HTTPONLY": True,
         "CSRF_COOKIE_SAMESITE": "Lax",
-        "SECURE_PROXY_SSL_HEADER": ["HTTP_X_FORWARDED_PROTO", "https"],
+        "SECURE_PROXY_SSL_HEADER": None,
         "DJANGO_LOG_LEVEL": "WARNING",
         "APP_LOG_LEVEL": "INFO",
+        "DB_CONN_MAX_AGE": 60,
+        "DB_CONN_HEALTH_CHECKS": True,
+        "MIDDLEWARE": [
+            "django.middleware.security.SecurityMiddleware",
+            "whitenoise.middleware.WhiteNoiseMiddleware",
+            "django.contrib.sessions.middleware.SessionMiddleware",
+            "corsheaders.middleware.CorsMiddleware",
+            "django.middleware.common.CommonMiddleware",
+            "django.middleware.csrf.CsrfViewMiddleware",
+            "django.contrib.auth.middleware.AuthenticationMiddleware",
+            "django.contrib.messages.middleware.MessageMiddleware",
+            "django.middleware.clickjacking.XFrameOptionsMiddleware",
+        ],
+        "DEFAULT_STORAGE": "django.core.files.storage.FileSystemStorage",
+        "STATIC_STORAGE": ("whitenoise.storage.CompressedManifestStaticFilesStorage"),
     }
 
 
@@ -153,6 +176,7 @@ def test_production_settings_apply_security_contract():
         ({"DJANGO_SECURE_HSTS_SECONDS": "0"}, "DJANGO_SECURE_HSTS_SECONDS"),
         ({"DJANGO_SECURE_HSTS_PRELOAD": "True"}, "DJANGO_SECURE_HSTS_PRELOAD"),
         ({"DJANGO_LOG_LEVEL": "DEBUG"}, "DJANGO_LOG_LEVEL"),
+        ({"DJANGO_DB_CONN_MAX_AGE": "-1"}, "DJANGO_DB_CONN_MAX_AGE"),
     ],
 )
 def test_production_settings_reject_unsafe_configuration(overrides, invalid_variable):
