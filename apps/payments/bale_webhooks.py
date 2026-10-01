@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import timedelta
 from decimal import Decimal
@@ -27,6 +28,8 @@ from .services import (
     finalize_verified_payment,
     release_payment_attempt_pre_checkout,
 )
+
+logger = logging.getLogger(__name__)
 
 BALE_GATEWAY_NAME = "bale"
 BALE_PAYLOAD_PATTERN = re.compile(r"\Apay:([0-9a-f]{32})\Z")
@@ -84,8 +87,14 @@ def process_bale_webhook_update(*, update_id, gateway):
             _process_bale_successful_payment(record=record, gateway=gateway)
         else:
             raise BaleWebhookInvalid
-    except (BaleWebhookRetry, PaymentGatewayError):
+    except (BaleWebhookRetry, PaymentGatewayError) as exc:
         _return_bale_update_to_pending(update_id=record.update_id)
+        _log_bale_outcome_after_commit(
+            record=record,
+            outcome="deferred",
+            level=logging.WARNING,
+            failure_category=type(exc).__name__,
+        )
     except (
         BaleWebhookInvalid,
         IntegrityError,
@@ -93,17 +102,62 @@ def process_bale_webhook_update(*, update_id, gateway):
         PaymentInventoryInvalid,
         PaymentVerificationInvalid,
         PaymentWindowExpired,
-    ):
+    ) as exc:
         _finish_bale_update(
             update_id=record.update_id,
             status=BaleWebhookUpdate.Status.REJECTED,
         )
+        _log_bale_outcome_after_commit(
+            record=record,
+            outcome="rejected",
+            level=logging.WARNING,
+            failure_category=type(exc).__name__,
+        )
+    except Exception as exc:
+        logger.error(
+            "bale_webhook_processing_failed update_id=%s event_type=%s "
+            "payment_attempt_id=%s failure_category=%s",
+            record.update_id,
+            record.event_type,
+            record.payment_attempt_id,
+            type(exc).__name__,
+        )
+        raise
     else:
         _finish_bale_update(
             update_id=record.update_id,
             status=BaleWebhookUpdate.Status.PROCESSED,
         )
+        _log_bale_outcome_after_commit(
+            record=record,
+            outcome="processed",
+            level=logging.INFO,
+        )
     return BaleWebhookUpdate.objects.get(update_id=record.update_id)
+
+
+def _log_bale_outcome_after_commit(
+    *,
+    record,
+    outcome,
+    level,
+    failure_category=None,
+):
+    update_id = record.update_id
+    event_type = record.event_type
+    payment_attempt_id = record.payment_attempt_id
+    transaction.on_commit(
+        lambda: logger.log(
+            level,
+            "bale_webhook_outcome_committed update_id=%s event_type=%s "
+            "payment_attempt_id=%s outcome=%s failure_category=%s",
+            update_id,
+            event_type,
+            payment_attempt_id,
+            outcome,
+            failure_category,
+        )
+    )
 
 
 def recoverable_bale_update_ids(*, at=None):

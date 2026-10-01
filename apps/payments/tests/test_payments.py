@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import timedelta
@@ -107,6 +108,15 @@ class BlockingInitiationGateway(FakeGateway):
         )
 
 
+class SensitiveFailureGateway(FakeGateway):
+    def __init__(self, sensitive_value):
+        super().__init__()
+        self.sensitive_value = sensitive_value
+
+    def initiate(self, **kwargs):
+        raise PaymentGatewayUnavailable(self.sensitive_value)
+
+
 @pytest.fixture
 def api_client():
     return APIClient()
@@ -190,6 +200,68 @@ def expire_reservation(reservation):
         created_at=now - RESERVATION_LIFETIME,
         expires_at=now - timedelta(seconds=1),
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_payment_logs_safe_committed_context_without_duplicate_success(
+    payable_order,
+    caplog,
+):
+    order, _, _ = payable_order
+    gateway = FakeGateway()
+    caplog.set_level(logging.INFO, logger="apps.payments.services")
+
+    attempt, payment_url, _ = initiate_order_payment(order=order, gateway=gateway)
+    first = verify_order_payment(
+        attempt=attempt,
+        callback_data={"sensitive_callback": "private-callback-value"},
+        gateway=gateway,
+    )
+    second = verify_order_payment(
+        attempt=first,
+        callback_data={"sensitive_callback": "duplicate-private-value"},
+        gateway=gateway,
+    )
+
+    assert first.status == PaymentAttempt.Status.SUCCESS
+    assert second.status == PaymentAttempt.Status.SUCCESS
+    assert caplog.text.count("payment_initiation_committed") == 1
+    assert caplog.text.count("payment_finalization_committed") == 1
+    assert f"order_id={order.pk}" in caplog.text
+    assert f"payment_attempt_id={attempt.pk}" in caplog.text
+    assert "outcome=success" in caplog.text
+    sensitive_values = (
+        str(attempt.idempotency_key),
+        attempt.gateway_reference,
+        payment_url,
+        "private-callback-value",
+        "duplicate-private-value",
+        order.customer.user.email,
+        order.shipping_recipient_phone_number,
+    )
+    assert all(value not in caplog.text for value in sensitive_values)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_payment_gateway_failure_logging_is_sanitized_and_preserves_exception(
+    payable_order,
+    caplog,
+):
+    order, _, _ = payable_order
+    secret = "https://gateway.example/private?token=do-not-log"
+    gateway = SensitiveFailureGateway(secret)
+    caplog.set_level(logging.WARNING, logger="apps.payments.services")
+
+    with pytest.raises(PaymentGatewayUnavailable, match="do-not-log"):
+        initiate_order_payment(order=order, gateway=gateway)
+
+    attempt = PaymentAttempt.objects.get(order=order)
+    assert "payment_initiation_gateway_failed" in caplog.text
+    assert f"order_id={order.pk}" in caplog.text
+    assert f"payment_attempt_id={attempt.pk}" in caplog.text
+    assert "failure_category=PaymentGatewayUnavailable" in caplog.text
+    assert secret not in caplog.text
+    assert str(attempt.idempotency_key) not in caplog.text
 
 
 @pytest.mark.django_db

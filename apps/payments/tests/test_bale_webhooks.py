@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
@@ -189,6 +190,46 @@ def expire_reservation(reservation):
         created_at=now - RESERVATION_LIFETIME,
         expires_at=now - timedelta(seconds=1),
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_bale_recoverable_failure_log_has_safe_context_without_provider_data(caplog):
+    order, _, _, attempt = create_bale_payment()
+    provider_transaction_id = "provider-transaction-do-not-log"
+    gateway_error = "gateway-secret-do-not-log"
+    attempt.pre_checkout_transaction_id = provider_transaction_id
+    attempt.save(update_fields=("pre_checkout_transaction_id", "updated_at"))
+    record = BaleWebhookUpdate.objects.create(
+        update_id=9001,
+        event_type=BaleWebhookUpdate.EventType.SUCCESSFUL_PAYMENT,
+        payment_attempt=attempt,
+        provider_transaction_id=provider_transaction_id,
+        amount=attempt.amount,
+        currency=attempt.currency,
+    )
+    gateway = FakeBaleWebhookGateway()
+    gateway.inquiry_error = PaymentGatewayUnavailable(gateway_error)
+    caplog.set_level(logging.WARNING, logger="apps.payments.bale_webhooks")
+
+    result = bale_webhooks.process_bale_webhook_update(
+        update_id=record.update_id,
+        gateway=gateway,
+    )
+
+    assert result.status == BaleWebhookUpdate.Status.PENDING
+    assert "bale_webhook_outcome_committed" in caplog.text
+    assert f"update_id={record.update_id}" in caplog.text
+    assert f"payment_attempt_id={attempt.pk}" in caplog.text
+    assert "outcome=deferred" in caplog.text
+    assert "failure_category=PaymentGatewayUnavailable" in caplog.text
+    sensitive_values = (
+        provider_transaction_id,
+        gateway_error,
+        str(attempt.idempotency_key),
+        attempt.gateway_reference,
+        order.customer.user.email,
+    )
+    assert all(value not in caplog.text for value in sensitive_values)
 
 
 @pytest.mark.django_db

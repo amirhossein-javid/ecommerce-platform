@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
@@ -16,6 +17,7 @@ from apps.orders.lifecycle import (
     InvalidOrderTransition,
     InvalidOrderTransitionActor,
     cancel_order,
+    resolve_order_refund,
 )
 from apps.orders.models import (
     InventoryReservation,
@@ -97,6 +99,61 @@ def create_attempt(order, *, attempt_status):
         gateway="test",
         gateway_reference=f"cancel-attempt-{order.pk}",
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_paid_cancellation_logs_committed_restoration_context_once(caplog):
+    customer = create_customer()
+    operator = create_operator()
+    product = create_product(stock_quantity=8)
+    order = create_order(customer, status_value=Order.Status.PAID)
+    add_inventory(
+        order,
+        product,
+        item_quantity=2,
+        reservation_status=InventoryReservation.Status.CONSUMED,
+    )
+    create_attempt(order, attempt_status=PaymentAttempt.Status.SUCCESS)
+    caplog.set_level(logging.INFO, logger="apps.orders.lifecycle")
+
+    first = cancel_order(
+        order=order,
+        actor_type=OrderStatusHistory.ActorType.OPERATOR,
+        actor_user=operator,
+    )
+    duplicate = cancel_order(
+        order=order,
+        actor_type=OrderStatusHistory.ActorType.OPERATOR,
+        actor_user=operator,
+    )
+
+    assert first.changed is True
+    assert duplicate.changed is False
+    effect_logs = [
+        record.getMessage()
+        for record in caplog.records
+        if "order_cancellation_effects_committed" in record.getMessage()
+    ]
+    assert len(effect_logs) == 1
+    message = effect_logs[0]
+    assert f"order_id={order.pk}" in message
+    assert "previous_status=PAID" in message
+    assert "refund_status=REQUIRED" in message
+    assert "restored_product_count=1" in message
+    assert "restored_quantity=2" in message
+    assert "actor_type=OPERATOR" in message
+    assert f"actor_user_id={operator.pk}" in message
+
+    resolve_order_refund(order=order, operator=operator)
+    refund_logs = [
+        record.getMessage()
+        for record in caplog.records
+        if "order_refund_resolved" in record.getMessage()
+    ]
+    assert len(refund_logs) == 1
+    assert f"order_id={order.pk}" in refund_logs[0]
+    assert f"operator_id={operator.pk}" in refund_logs[0]
+    assert "refund_status=RESOLVED" in refund_logs[0]
 
 
 @pytest.mark.django_db
