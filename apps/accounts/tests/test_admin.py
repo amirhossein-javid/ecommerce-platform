@@ -1,14 +1,102 @@
 import pytest
 from django.contrib import admin
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Group, Permission
 from django.urls import reverse
 
-from apps.accounts.admin import UserAdmin
+from apps.accounts.admin import GroupAdmin, UserAdmin
 from apps.accounts.models import User
 
 
 def test_user_is_registered_with_custom_admin():
     assert isinstance(admin.site._registry[User], UserAdmin)
+
+
+def test_group_is_registered_with_protected_admin():
+    assert isinstance(admin.site._registry[Group], GroupAdmin)
+
+
+@pytest.mark.django_db
+def test_non_superuser_cannot_change_group_permissions(client):
+    operator = User.objects.create_user("operator@example.com", "strong-password")
+    operator.is_staff = True
+    operator.save(update_fields=["is_staff"])
+    operator.user_permissions.add(
+        *Permission.objects.filter(
+            content_type__app_label="auth",
+            codename__in=["add_group", "change_group", "delete_group"],
+        )
+    )
+    original_permission = Permission.objects.get(
+        content_type__app_label="accounts",
+        codename="view_user",
+    )
+    attempted_permission = Permission.objects.get(
+        content_type__app_label="accounts",
+        codename="change_user",
+    )
+    group = Group.objects.create(name="Operators")
+    group.permissions.add(original_permission)
+    client.force_login(operator)
+
+    change_url = reverse("admin:auth_group_change", args=(group.pk,))
+    get_response = client.get(change_url)
+    post_response = client.post(
+        change_url,
+        {
+            "name": group.name,
+            "permissions": [attempted_permission.pk],
+            "_save": "Save",
+        },
+    )
+
+    assert get_response.status_code == 200
+    assert b'name="_save"' not in get_response.content
+    assert post_response.status_code == 403
+    assert list(group.permissions.values_list("pk", flat=True)) == [
+        original_permission.pk
+    ]
+
+    add_response = client.post(
+        reverse("admin:auth_group_add"),
+        {"name": "Escalated", "permissions": [attempted_permission.pk]},
+    )
+    delete_response = client.post(
+        reverse("admin:auth_group_delete", args=(group.pk,)),
+        {"post": "yes"},
+    )
+
+    assert add_response.status_code == 403
+    assert delete_response.status_code == 403
+    assert Group.objects.filter(name="Escalated").exists() is False
+    assert Group.objects.filter(pk=group.pk).exists() is True
+
+
+@pytest.mark.django_db
+def test_superuser_can_manage_group_permissions(client):
+    superuser = User.objects.create_superuser(
+        "admin@example.com",
+        "strong-password",
+    )
+    permission = Permission.objects.get(
+        content_type__app_label="accounts",
+        codename="change_user",
+    )
+    group = Group.objects.create(name="Operators")
+    client.force_login(superuser)
+
+    response = client.post(
+        reverse("admin:auth_group_change", args=(group.pk,)),
+        {
+            "name": "Senior operators",
+            "permissions": [permission.pk],
+            "_save": "Save",
+        },
+    )
+
+    assert response.status_code == 302
+    group.refresh_from_db()
+    assert group.name == "Senior operators"
+    assert list(group.permissions.values_list("pk", flat=True)) == [permission.pk]
 
 
 @pytest.mark.django_db
