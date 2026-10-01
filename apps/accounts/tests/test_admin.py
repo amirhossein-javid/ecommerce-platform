@@ -142,3 +142,55 @@ def test_privilege_fields_are_ignored_when_authorized_staff_adds_user(client):
     assert created_user.is_superuser is False
     assert created_user.groups.exists() is False
     assert created_user.user_permissions.exists() is False
+
+
+@pytest.mark.django_db
+def test_non_superuser_cannot_escalate_or_manage_privileged_users(client):
+    operator = User.objects.create_user("operator@example.com", "strong-password")
+    operator.is_staff = True
+    operator.save(update_fields=["is_staff"])
+    operator.user_permissions.add(
+        Permission.objects.get(
+            content_type__app_label="accounts",
+            codename="change_user",
+        )
+    )
+    customer = User.objects.create_user("customer@example.com", "strong-password")
+    privileged_user = User.objects.create_user("other-staff@example.com")
+    privileged_user.is_staff = True
+    privileged_user.save(update_fields=["is_staff"])
+    client.force_login(operator)
+
+    response = client.post(
+        reverse("admin:accounts_user_change", args=(customer.pk,)),
+        {
+            "email": customer.email,
+            "is_active": "on",
+            "is_staff": "on",
+            "is_superuser": "on",
+            "groups": [operator.pk],
+            "user_permissions": [operator.pk],
+            "_save": "Save",
+        },
+    )
+
+    assert response.status_code == 302
+    customer.refresh_from_db()
+    assert customer.is_staff is False
+    assert customer.is_superuser is False
+    assert customer.groups.exists() is False
+    assert customer.user_permissions.exists() is False
+    privileged_url = reverse(
+        "admin:accounts_user_change",
+        args=(privileged_user.pk,),
+    )
+    get_response = client.get(privileged_url)
+    post_response = client.post(
+        privileged_url,
+        {"email": "changed@example.com", "is_active": "on", "_save": "Save"},
+    )
+    assert get_response.status_code == 200
+    assert b'name="_save"' not in get_response.content
+    assert post_response.status_code == 403
+    privileged_user.refresh_from_db()
+    assert privileged_user.email == "other-staff@example.com"

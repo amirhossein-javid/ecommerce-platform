@@ -1,8 +1,65 @@
 from django import forms
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
+from django.db.models import Count
+from django.urls import reverse
+from django.utils.html import format_html
 
-from .lifecycle import OrderLifecycleError, transition_order
-from .models import Order, OrderStatusHistory, Shipment
+from .lifecycle import (
+    OrderLifecycleError,
+    cancel_order,
+    resolve_order_refund,
+    transition_order,
+)
+from .models import (
+    InventoryReservation,
+    Order,
+    OrderItem,
+    OrderStatusHistory,
+    Shipment,
+)
+
+
+class ReadOnlyOrderInline(admin.TabularInline):
+    extra = 0
+    can_delete = False
+    show_change_link = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class OrderItemInline(ReadOnlyOrderInline):
+    model = OrderItem
+    fields = ("product_name", "sku", "unit_price", "quantity", "line_total")
+    readonly_fields = fields
+    ordering = ("pk",)
+
+
+class InventoryReservationInline(ReadOnlyOrderInline):
+    model = InventoryReservation
+    fields = ("product", "quantity", "status", "expires_at", "created_at")
+    readonly_fields = fields
+    ordering = ("pk",)
+
+
+class OrderStatusHistoryInline(ReadOnlyOrderInline):
+    model = OrderStatusHistory
+    fields = (
+        "from_status",
+        "to_status",
+        "actor_type",
+        "actor_user",
+        "created_at",
+    )
+    readonly_fields = fields
+    ordering = ("created_at", "pk")
 
 
 class ShipmentAdminForm(forms.ModelForm):
@@ -30,15 +87,38 @@ class OrderAdmin(admin.ModelAdmin):
         "customer",
         "status",
         "refund_status",
+        "grand_total",
+        "payment_attempts_link",
         "created_at",
-        "updated_at",
     )
-    list_filter = ("status", "refund_status")
-    search_fields = ("id", "customer__user__email")
+    list_filter = ("status", "refund_status", "created_at")
+    search_fields = (
+        "=id",
+        "customer__user__email",
+        "shipping_recipient_first_name",
+        "shipping_recipient_last_name",
+        "shipping_recipient_phone_number",
+        "shipping_postal_code",
+    )
     list_select_related = ("customer", "customer__user")
     ordering = ("-created_at", "-pk")
-    readonly_fields = tuple(field.name for field in Order._meta.fields)
-    actions = ("mark_processing", "mark_shipped", "mark_delivered")
+    readonly_fields = tuple(field.name for field in Order._meta.fields) + (
+        "payment_attempts_link",
+    )
+    actions = (
+        "mark_processing",
+        "mark_shipped",
+        "mark_delivered",
+        "cancel_orders",
+        "resolve_refunds",
+    )
+    inlines = (
+        OrderItemInline,
+        InventoryReservationInline,
+        OrderStatusHistoryInline,
+    )
+    date_hierarchy = "created_at"
+    list_per_page = 50
 
     def has_add_permission(self, request):
         return False
@@ -46,7 +126,22 @@ class OrderAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-    @admin.action(description="Mark selected orders as processing")
+    def has_change_permission(self, request, obj=None):
+        if obj is not None:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(admin_payment_attempt_count=Count("payment_attempts"))
+        )
+
+    @admin.action(
+        description="Mark selected orders as processing",
+        permissions=("change",),
+    )
     def mark_processing(self, request, queryset):
         self._transition_selected_orders(
             request=request,
@@ -55,7 +150,10 @@ class OrderAdmin(admin.ModelAdmin):
             to_status=Order.Status.PROCESSING,
         )
 
-    @admin.action(description="Mark selected orders as shipped")
+    @admin.action(
+        description="Mark selected orders as shipped",
+        permissions=("change",),
+    )
     def mark_shipped(self, request, queryset):
         self._transition_selected_orders(
             request=request,
@@ -64,13 +162,47 @@ class OrderAdmin(admin.ModelAdmin):
             to_status=Order.Status.SHIPPED,
         )
 
-    @admin.action(description="Mark selected orders as delivered")
+    @admin.action(
+        description="Mark selected orders as delivered",
+        permissions=("change",),
+    )
     def mark_delivered(self, request, queryset):
         self._transition_selected_orders(
             request=request,
             queryset=queryset,
             from_status=Order.Status.SHIPPED,
             to_status=Order.Status.DELIVERED,
+        )
+
+    @admin.action(
+        description="Cancel selected eligible orders",
+        permissions=("change",),
+    )
+    def cancel_orders(self, request, queryset):
+        self._run_order_command(
+            request=request,
+            queryset=queryset,
+            command=lambda order: cancel_order(
+                order=order,
+                actor_type=OrderStatusHistory.ActorType.OPERATOR,
+                actor_user=request.user,
+            ),
+            success_message="cancelled",
+        )
+
+    @admin.action(
+        description="Mark selected required refunds as resolved",
+        permissions=("change",),
+    )
+    def resolve_refunds(self, request, queryset):
+        self._run_order_command(
+            request=request,
+            queryset=queryset,
+            command=lambda order: resolve_order_refund(
+                order=order,
+                operator=request.user,
+            ),
+            success_message="refund(s) resolved for",
         )
 
     def _transition_selected_orders(
@@ -81,18 +213,29 @@ class OrderAdmin(admin.ModelAdmin):
         from_status,
         to_status,
     ):
+        self._run_order_command(
+            request=request,
+            queryset=queryset,
+            command=lambda order: transition_order(
+                order=order,
+                from_status=from_status,
+                to_status=to_status,
+                actor_type=OrderStatusHistory.ActorType.OPERATOR,
+                actor_user=request.user,
+            ),
+            success_message=f"marked as {to_status}",
+        )
+
+    def _run_order_command(self, *, request, queryset, command, success_message):
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
         changed = 0
         unchanged = 0
         failed = 0
         for order in queryset.order_by("pk"):
             try:
-                result = transition_order(
-                    order=order,
-                    from_status=from_status,
-                    to_status=to_status,
-                    actor_type=OrderStatusHistory.ActorType.OPERATOR,
-                    actor_user=request.user,
-                )
+                result = command(order)
             except OrderLifecycleError as exc:
                 failed += 1
                 self.message_user(
@@ -109,21 +252,32 @@ class OrderAdmin(admin.ModelAdmin):
         if changed:
             self.message_user(
                 request,
-                f"{changed} order(s) marked as {to_status}.",
+                f"{changed} order(s) {success_message}.",
                 level=messages.SUCCESS,
             )
         if unchanged:
             self.message_user(
                 request,
-                f"{unchanged} order(s) were already {to_status} by this operator.",
+                f"{unchanged} order command(s) were already completed by this "
+                "operator.",
                 level=messages.INFO,
             )
         if failed:
             self.message_user(
                 request,
-                f"{failed} order(s) could not be marked as {to_status}.",
+                f"{failed} order command(s) could not be completed.",
                 level=messages.WARNING,
             )
+
+    @admin.display(description="Payments")
+    def payment_attempts_link(self, obj):
+        url = reverse("admin:payments_paymentattempt_changelist")
+        return format_html(
+            '<a href="{}?order__id__exact={}">{} attempt(s)</a>',
+            url,
+            obj.pk,
+            obj.admin_payment_attempt_count,
+        )
 
 
 @admin.register(Shipment)
@@ -144,6 +298,9 @@ class ShipmentAdmin(admin.ModelAdmin):
     )
     list_select_related = ("order", "order__customer", "order__customer__user")
     ordering = ("-created_at", "-pk")
+    list_filter = ("order__status", "carrier")
+    date_hierarchy = "created_at"
+    list_per_page = 50
     fields = (
         "order",
         "carrier",

@@ -49,6 +49,27 @@ class UserAdmin(DjangoUserAdmin):
         ),
     )
 
+    def get_fieldsets(self, request, obj=None):
+        if obj is None or request.user.is_superuser:
+            return super().get_fieldsets(request, obj)
+        return (
+            (None, {"fields": ("email", "password")}),
+            (_("Account status"), {"fields": ("is_active",)}),
+            (_("Important dates"), {"fields": ("last_login", "date_joined")}),
+        )
+
+    def has_change_permission(self, request, obj=None):
+        if (
+            obj is not None
+            and (obj.is_staff or obj.is_superuser)
+            and not request.user.is_superuser
+        ):
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(CustomerProfile)
 class CustomerProfileAdmin(admin.ModelAdmin):
@@ -64,6 +85,15 @@ class CustomerProfileAdmin(admin.ModelAdmin):
     autocomplete_fields = ("user",)
     readonly_fields = ("created_at", "updated_at")
     ordering = ("user__email",)
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = ("created_at", "updated_at")
+        if obj is not None:
+            readonly += ("user",)
+        return readonly
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Address)
@@ -90,3 +120,9 @@ class AddressAdmin(admin.ModelAdmin):
     autocomplete_fields = ("customer_profile",)
     list_select_related = ("customer_profile", "customer_profile__user")
     readonly_fields = ("created_at", "updated_at")
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = ("created_at", "updated_at")
+        if obj is not None:
+            readonly += ("customer_profile",)
+        return readonly

@@ -1,11 +1,35 @@
+from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Sum
 from django.forms.models import BaseInlineFormSet
+from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import Category, Product, ProductImage
+
+
+class ProductAdminForm(forms.ModelForm):
+    class Meta:
+        model = Product
+        fields = "__all__"
+
+    def clean_stock_quantity(self):
+        stock_quantity = self.cleaned_data["stock_quantity"]
+        if self.instance.pk is None:
+            return stock_quantity
+
+        reserved_quantity = self.instance.inventory_reservations.filter(
+            status="ACTIVE",
+            expires_at__gt=timezone.now(),
+        ).aggregate(total=Sum("quantity", default=0))["total"]
+        if stock_quantity < reserved_quantity:
+            raise ValidationError(
+                "Stock cannot be lower than the quantity in active reservations "
+                f"({reserved_quantity})."
+            )
+        return stock_quantity
 
 
 def image_thumbnail(image, *, alt_text="", size=56):
@@ -98,9 +122,13 @@ class CategoryAdmin(admin.ModelAdmin):
     list_per_page = 50
     save_on_top = True
 
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
+    form = ProductAdminForm
     list_display = (
         "name",
         "primary_image_thumbnail",
@@ -138,6 +166,20 @@ class ProductAdmin(admin.ModelAdmin):
     inlines = (ProductImageInline,)
     list_per_page = 50
     save_on_top = True
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        with transaction.atomic():
+            if request.method == "POST" and object_id is not None:
+                Product.objects.select_for_update().filter(pk=object_id).first()
+            return super().changeform_view(
+                request,
+                object_id=object_id,
+                form_url=form_url,
+                extra_context=extra_context,
+            )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     def get_queryset(self, request):
         return (
