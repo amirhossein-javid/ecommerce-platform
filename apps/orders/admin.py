@@ -1,8 +1,9 @@
 from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count
+from django.db.models import Count, F, Min, Q
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.html import format_html
 
 from .lifecycle import (
@@ -62,6 +63,106 @@ class OrderStatusHistoryInline(ReadOnlyOrderInline):
     ordering = ("created_at", "pk")
 
 
+class OrderOperationalStateFilter(admin.SimpleListFilter):
+    title = "operator attention"
+    parameter_name = "operational_state"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("attention", "Any attention required"),
+            ("refund", "Refund required"),
+            ("payment_elapsed", "Payment window elapsed"),
+            ("payment_inventory", "Invalid payment inventory"),
+            ("start_processing", "Ready to process"),
+            ("shipment_details", "Shipment details required"),
+            ("ready_to_ship", "Ready to ship"),
+            ("awaiting_delivery", "Awaiting delivery confirmation"),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "refund":
+            return queryset.filter(refund_status=Order.RefundStatus.REQUIRED)
+        if value == "payment_elapsed":
+            return queryset.filter(
+                status=Order.Status.PENDING_PAYMENT,
+                admin_active_reservation_count=F("admin_reservation_count"),
+                admin_payment_expires_at__lte=timezone.now(),
+            ).exclude(admin_reservation_count=0)
+        if value == "payment_inventory":
+            return queryset.filter(status=Order.Status.PENDING_PAYMENT).filter(
+                Q(admin_reservation_count=0)
+                | ~Q(admin_active_reservation_count=F("admin_reservation_count"))
+            )
+        if value == "start_processing":
+            return queryset.filter(status=Order.Status.PAID)
+        if value == "shipment_details":
+            return queryset.filter(status=Order.Status.PROCESSING).filter(
+                Q(shipment__isnull=True)
+                | Q(shipment__carrier="")
+                | Q(shipment__tracking_number="")
+            )
+        if value == "ready_to_ship":
+            return (
+                queryset.filter(status=Order.Status.PROCESSING)
+                .exclude(shipment__isnull=True)
+                .exclude(shipment__carrier="")
+                .exclude(shipment__tracking_number="")
+            )
+        if value == "awaiting_delivery":
+            return queryset.filter(status=Order.Status.SHIPPED)
+        if value == "attention":
+            return queryset.filter(
+                Q(refund_status=Order.RefundStatus.REQUIRED)
+                | Q(status__in=(Order.Status.PAID, Order.Status.PROCESSING))
+                | Q(status=Order.Status.SHIPPED)
+                | Q(
+                    status=Order.Status.PENDING_PAYMENT,
+                    admin_payment_expires_at__lte=timezone.now(),
+                )
+                | Q(
+                    status=Order.Status.PENDING_PAYMENT,
+                    admin_reservation_count=0,
+                )
+                | Q(
+                    status=Order.Status.PENDING_PAYMENT,
+                    admin_active_reservation_count__lt=F("admin_reservation_count"),
+                )
+            )
+        return queryset
+
+
+class ShipmentOperationalStateFilter(admin.SimpleListFilter):
+    title = "fulfillment state"
+    parameter_name = "shipment_state"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("needs_details", "Needs shipment details"),
+            ("ready_to_ship", "Ready to ship"),
+            ("shipped", "In transit"),
+            ("delivered", "Delivered"),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "needs_details":
+            return queryset.filter(order__status=Order.Status.PROCESSING).filter(
+                Q(carrier="") | Q(tracking_number="")
+            )
+        if value == "ready_to_ship":
+            return (
+                queryset.filter(order__status=Order.Status.PROCESSING)
+                .exclude(carrier="")
+                .exclude(tracking_number="")
+            )
+        if value == "shipped":
+            return queryset.filter(order__status=Order.Status.SHIPPED)
+        if value == "delivered":
+            return queryset.filter(order__status=Order.Status.DELIVERED)
+        return queryset
+
+
 class ShipmentAdminForm(forms.ModelForm):
     class Meta:
         model = Shipment
@@ -86,12 +187,18 @@ class OrderAdmin(admin.ModelAdmin):
         "id",
         "customer",
         "status",
+        "operator_state",
         "refund_status",
         "grand_total",
         "payment_attempts_link",
         "created_at",
     )
-    list_filter = ("status", "refund_status", "created_at")
+    list_filter = (
+        OrderOperationalStateFilter,
+        "status",
+        "refund_status",
+        "created_at",
+    )
     search_fields = (
         "=id",
         "customer__user__email",
@@ -135,8 +242,61 @@ class OrderAdmin(admin.ModelAdmin):
         return (
             super()
             .get_queryset(request)
-            .annotate(admin_payment_attempt_count=Count("payment_attempts"))
+            .select_related("shipment")
+            .annotate(
+                admin_payment_attempt_count=Count(
+                    "payment_attempts",
+                    distinct=True,
+                ),
+                admin_reservation_count=Count(
+                    "inventory_reservations",
+                    distinct=True,
+                ),
+                admin_active_reservation_count=Count(
+                    "inventory_reservations",
+                    filter=Q(
+                        inventory_reservations__status=(
+                            InventoryReservation.Status.ACTIVE
+                        )
+                    ),
+                    distinct=True,
+                ),
+                admin_payment_expires_at=Min(
+                    "inventory_reservations__expires_at",
+                    filter=Q(
+                        inventory_reservations__status=(
+                            InventoryReservation.Status.ACTIVE
+                        )
+                    ),
+                ),
+            )
         )
+
+    @admin.display(description="Operator state")
+    def operator_state(self, obj):
+        if obj.refund_status == Order.RefundStatus.REQUIRED:
+            return "Refund required"
+        if obj.status == Order.Status.PENDING_PAYMENT:
+            if (
+                obj.admin_reservation_count == 0
+                or obj.admin_active_reservation_count != obj.admin_reservation_count
+            ):
+                return "Payment inventory invalid"
+            if (
+                obj.admin_payment_expires_at is not None
+                and obj.admin_payment_expires_at <= timezone.now()
+            ):
+                return "Payment window elapsed"
+        if obj.status == Order.Status.PAID:
+            return "Ready to process"
+        if obj.status == Order.Status.PROCESSING:
+            shipment = getattr(obj, "shipment", None)
+            if shipment is None or not shipment.carrier or not shipment.tracking_number:
+                return "Shipment details required"
+            return "Ready to ship"
+        if obj.status == Order.Status.SHIPPED:
+            return "Awaiting delivery confirmation"
+        return "—"
 
     @admin.action(
         description="Mark selected orders as processing",
@@ -288,6 +448,7 @@ class ShipmentAdmin(admin.ModelAdmin):
         "carrier",
         "tracking_number",
         "order_status",
+        "fulfillment_state",
         "updated_at",
     )
     search_fields = (
@@ -298,7 +459,7 @@ class ShipmentAdmin(admin.ModelAdmin):
     )
     list_select_related = ("order", "order__customer", "order__customer__user")
     ordering = ("-created_at", "-pk")
-    list_filter = ("order__status", "carrier")
+    list_filter = (ShipmentOperationalStateFilter, "order__status", "carrier")
     date_hierarchy = "created_at"
     list_per_page = 50
     fields = (
@@ -330,3 +491,17 @@ class ShipmentAdmin(admin.ModelAdmin):
     @admin.display(description="Order status", ordering="order__status")
     def order_status(self, obj):
         return obj.order.status
+
+    @admin.display(description="Fulfillment state")
+    def fulfillment_state(self, obj):
+        if obj.order.status == Order.Status.PROCESSING:
+            if not obj.carrier or not obj.tracking_number:
+                return "Shipment details required"
+            return "Ready to ship"
+        if obj.order.status == Order.Status.SHIPPED:
+            return "In transit"
+        if obj.order.status == Order.Status.DELIVERED:
+            return "Delivered"
+        if obj.order.status == Order.Status.CANCELLED:
+            return "Cancelled"
+        return "—"
