@@ -20,7 +20,7 @@ def build_product(category, **overrides):
         "category": category,
         "name": "Laptop",
         "sku": "LAPTOP-001",
-        "price": Decimal("1299.99"),
+        "price": Decimal("1299.00"),
     }
     values.update(overrides)
     return Product(**values)
@@ -236,7 +236,7 @@ def test_full_clean_detects_case_insensitive_duplicate_sku(category):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("price", [Decimal("0.00"), Decimal("-0.01")])
+@pytest.mark.parametrize("price", [Decimal("0.00"), Decimal("-1.00")])
 def test_nonpositive_price_fails_model_validation(category, price):
     product = build_product(category, price=price)
 
@@ -247,9 +247,27 @@ def test_nonpositive_price_fails_model_validation(category, price):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("price", [Decimal("0.00"), Decimal("-0.01")])
+@pytest.mark.parametrize("price", [Decimal("0.00"), Decimal("-1.00")])
 def test_nonpositive_price_is_rejected_by_database(category, price):
     product = build_product(category, price=price)
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        product.save()
+
+
+@pytest.mark.django_db
+def test_fractional_rial_price_fails_model_validation(category):
+    product = build_product(category, price=Decimal("1299.50"))
+
+    with pytest.raises(ValidationError) as exc_info:
+        product.full_clean()
+
+    assert "price" in exc_info.value.message_dict
+
+
+@pytest.mark.django_db
+def test_fractional_rial_price_is_rejected_by_database(category):
+    product = build_product(category, price=Decimal("1299.50"))
 
     with pytest.raises(IntegrityError), transaction.atomic():
         product.save()

@@ -7,6 +7,8 @@ from django.db.models import F, Q
 from django.db.models.functions import Lower
 from django.utils.text import slugify
 
+from apps.common.money import validate_whole_rial
+
 
 class Category(models.Model):
     name = models.CharField(max_length=255)
@@ -120,7 +122,7 @@ class Product(models.Model):
     price = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.01"))],
+        validators=[MinValueValidator(Decimal("1.00")), validate_whole_rial],
     )
     stock_quantity = models.IntegerField(
         default=0,
@@ -143,6 +145,10 @@ class Product(models.Model):
             models.CheckConstraint(
                 condition=Q(price__gt=0),
                 name="products_product_price_gt_zero",
+            ),
+            models.CheckConstraint(
+                condition=Q(price=models.functions.Floor("price")),
+                name="products_product_price_whole_irr",
             ),
             models.CheckConstraint(
                 condition=Q(stock_quantity__gte=0),

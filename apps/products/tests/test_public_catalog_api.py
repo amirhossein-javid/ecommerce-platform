@@ -282,7 +282,7 @@ def test_product_list_filters_by_price_range(api_client, categories):
 
     response = api_client.get(
         reverse("products:product-list"),
-        {"min_price": "15.00", "max_price": "25.00"},
+        {"min_price": "15", "max_price": "25"},
     )
 
     assert [item["slug"] for item in response.json()["results"]] == [middle.slug]
@@ -409,7 +409,7 @@ def test_invalid_product_filters_return_bad_request(api_client, categories):
     )
     reversed_range = api_client.get(
         reverse("products:product-list"),
-        {"min_price": "20.00", "max_price": "10.00"},
+        {"min_price": "20", "max_price": "10"},
     )
 
     assert invalid_decimal.status_code == status.HTTP_400_BAD_REQUEST
@@ -422,7 +422,7 @@ def test_invalid_product_filters_return_bad_request(api_client, categories):
     [
         {"in_stock": "not-a-boolean"},
         {"max_price": "NaN"},
-        {"min_price": "1.001"},
+        {"min_price": "1.50"},
     ],
 )
 def test_malformed_product_filters_fail_safely(

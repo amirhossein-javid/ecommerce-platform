@@ -32,6 +32,11 @@ class ProductImageSerializer(serializers.ModelSerializer):
 
 
 class ProductListSerializer(serializers.ModelSerializer):
+    price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        read_only=True,
+    )
     category = CategorySummarySerializer(read_only=True)
     in_stock = serializers.SerializerMethodField()
     primary_image = serializers.SerializerMethodField()
@@ -80,13 +85,13 @@ class ProductDetailSerializer(ProductListSerializer):
 class ProductListFilterSerializer(serializers.Serializer):
     category = serializers.SlugField(required=False, allow_unicode=True)
     min_price = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
+        max_digits=10,
+        decimal_places=0,
         required=False,
     )
     max_price = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
+        max_digits=10,
+        decimal_places=0,
         required=False,
     )
     in_stock = serializers.BooleanField(required=False)
