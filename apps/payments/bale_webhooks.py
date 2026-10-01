@@ -269,23 +269,25 @@ def _process_bale_pre_checkout(*, record, gateway):
 def _process_bale_successful_payment(*, record, gateway):
     attempt = _record_attempt(record)
     transaction_id = record.provider_transaction_id
+    recorded_pre_checkout = _recorded_pre_checkout_exists(
+        attempt=attempt,
+        transaction_id=transaction_id,
+    )
 
     if attempt.status == PaymentAttempt.Status.SUCCESS:
         if attempt.provider_transaction_id != transaction_id:
             raise BaleWebhookInvalid
         return attempt
-    if attempt.status == PaymentAttempt.Status.FAILED:
-        if not _recorded_pre_checkout_exists(
-            attempt=attempt,
-            transaction_id=transaction_id,
-        ):
-            raise BaleWebhookInvalid
-        release_payment_attempt_pre_checkout(
-            attempt=attempt,
-            provider_transaction_id=transaction_id,
+    if attempt.status == PaymentAttempt.Status.FAILED and not recorded_pre_checkout:
+        raise BaleWebhookInvalid
+    if (
+        attempt.status
+        not in (
+            PaymentAttempt.Status.PENDING,
+            PaymentAttempt.Status.FAILED,
         )
-        return attempt
-    if attempt.status != PaymentAttempt.Status.PENDING or not attempt.gateway_reference:
+        or not attempt.gateway_reference
+    ):
         raise BaleWebhookInvalid
     if attempt.provider_transaction_id not in (None, transaction_id):
         raise BaleWebhookInvalid
@@ -295,10 +297,7 @@ def _process_bale_successful_payment(*, record, gateway):
         # An ambiguous PreCheckout timeout may have succeeded at Bale after its
         # local claim was released. The durable record permits paid inquiry to
         # recover that transaction without treating the webhook itself as proof.
-        and not _recorded_pre_checkout_exists(
-            attempt=attempt,
-            transaction_id=transaction_id,
-        )
+        and not recorded_pre_checkout
     ):
         raise BaleWebhookInvalid
 

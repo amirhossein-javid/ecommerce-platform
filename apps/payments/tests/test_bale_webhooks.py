@@ -18,7 +18,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.accounts.models import CustomerProfile, User
-from apps.orders.models import InventoryReservation, Order
+from apps.orders.lifecycle import cancel_order, resolve_order_refund
+from apps.orders.models import InventoryReservation, Order, OrderStatusHistory
 from apps.orders.services import RESERVATION_LIFETIME
 from apps.payments import bale_webhooks
 from apps.payments.bale_webhooks import PROCESSING_LEASE
@@ -598,7 +599,7 @@ def test_provider_transaction_cannot_be_reused_across_attempts(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_successful_payment_after_expiry_expires_without_stock_deduction(monkeypatch):
+def test_authoritative_bale_success_after_expiry_requires_refund(monkeypatch):
     order, product, reservation, attempt = create_bale_payment()
     gateway = FakeBaleWebhookGateway()
     configure_gateway(monkeypatch, gateway)
@@ -618,9 +619,80 @@ def test_successful_payment_after_expiry_expires_without_stock_deduction(monkeyp
     reservation.refresh_from_db()
     attempt.refresh_from_db()
     assert order.status == Order.Status.EXPIRED
-    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert attempt.provider_transaction_id == "tx-1"
     assert reservation.status == InventoryReservation.Status.RELEASED
     assert product.stock_quantity == 10
+    assert gateway.inquiries == ["tx-1"]
+
+
+@pytest.mark.django_db
+def test_authoritative_bale_success_after_cancellation_is_idempotent(monkeypatch):
+    order, product, reservation, attempt = create_bale_payment()
+    gateway = FakeBaleWebhookGateway()
+    configure_gateway(monkeypatch, gateway)
+    client = APIClient()
+    bind_pre_checkout(client, attempt, gateway)
+    cancel_order(
+        order=order,
+        actor_type=OrderStatusHistory.ActorType.CUSTOMER,
+        actor_user=order.customer.user,
+    )
+
+    first = client.post(
+        WEBHOOK_URL,
+        successful_update(attempt, update_id=2),
+        format="json",
+    )
+    second = client.post(
+        WEBHOOK_URL,
+        successful_update(attempt, update_id=3),
+        format="json",
+    )
+
+    assert first.status_code == second.status_code == status.HTTP_200_OK
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt.refresh_from_db()
+    assert order.status == Order.Status.CANCELLED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert attempt.provider_transaction_id == "tx-1"
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert product.stock_quantity == 10
+    assert gateway.inquiries == ["tx-1"]
+    assert (
+        BaleWebhookUpdate.objects.filter(
+            update_id__in=(2, 3),
+            status=BaleWebhookUpdate.Status.PROCESSED,
+        ).count()
+        == 2
+    )
+
+    operator = User.objects.create_superuser(
+        "late-refund-operator@example.com",
+        "StrongPassword123!",
+    )
+    first_resolution = resolve_order_refund(order=order, operator=operator)
+    duplicate_resolution = resolve_order_refund(order=order, operator=operator)
+    order.refresh_from_db()
+    assert first_resolution.changed is True
+    assert duplicate_resolution.changed is False
+    assert order.refund_status == Order.RefundStatus.RESOLVED
+
+    replay_after_resolution = client.post(
+        WEBHOOK_URL,
+        successful_update(attempt, update_id=4),
+        format="json",
+    )
+    order.refresh_from_db()
+    product.refresh_from_db()
+    assert replay_after_resolution.status_code == status.HTTP_200_OK
+    assert order.refund_status == Order.RefundStatus.RESOLVED
+    assert product.stock_quantity == 10
+    assert gateway.inquiries == ["tx-1"]
 
 
 @pytest.mark.django_db

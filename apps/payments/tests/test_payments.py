@@ -654,7 +654,10 @@ def test_verification_rejects_mismatched_verified_amount_without_mutation(
 
 
 @pytest.mark.django_db
-def test_success_after_expiry_cannot_pay_or_deduct_stock(payable_order, gateway):
+def test_authoritative_success_after_expiry_requires_refund_without_stock_deduction(
+    payable_order,
+    gateway,
+):
     order, product, reservation = payable_order
     attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
     expire_reservation(reservation)
@@ -669,11 +672,45 @@ def test_success_after_expiry_cannot_pay_or_deduct_stock(payable_order, gateway)
     product.refresh_from_db()
     reservation.refresh_from_db()
     attempt.refresh_from_db()
-    assert result.status == PaymentAttempt.Status.FAILED
-    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert result.status == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
     assert order.status == Order.Status.EXPIRED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
     assert reservation.status == InventoryReservation.Status.RELEASED
     assert product.stock_quantity == 10
+
+
+@pytest.mark.django_db
+def test_authoritative_verification_after_cancellation_requires_refund(
+    payable_order,
+    gateway,
+):
+    order, product, reservation = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    cancel_order(
+        order=order,
+        actor_type=OrderStatusHistory.ActorType.CUSTOMER,
+        actor_user=order.customer.user,
+    )
+    attempt.refresh_from_db()
+
+    result = verify_order_payment(
+        attempt=attempt,
+        callback_data={"opaque": "late-success"},
+        gateway=gateway,
+    )
+
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt.refresh_from_db()
+    assert result.status == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert order.status == Order.Status.CANCELLED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert product.stock_quantity == 10
+    assert len(gateway.verifications) == 1
 
 
 @pytest.mark.django_db
@@ -712,9 +749,10 @@ def test_final_deadline_rollback_refreshes_order_before_expiry(
     attempt.refresh_from_db()
     history = list(OrderStatusHistory.objects.filter(order=order))
     assert calls == 4
-    assert result.status == PaymentAttempt.Status.FAILED
-    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert result.status == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
     assert order.status == Order.Status.EXPIRED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
     assert order.paid_at is None
     assert product.stock_quantity == 10
     assert reservation.status == InventoryReservation.Status.RELEASED
@@ -976,9 +1014,10 @@ def test_success_waiting_on_product_lock_cannot_finalize_after_expiry():
     attempt.refresh_from_db()
     reservation.refresh_from_db()
     product.refresh_from_db()
-    assert result == PaymentAttempt.Status.FAILED
-    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert result == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
     assert order.status == Order.Status.EXPIRED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
     assert reservation.status == InventoryReservation.Status.RELEASED
     assert product.stock_quantity == 3
 

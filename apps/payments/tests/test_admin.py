@@ -102,6 +102,11 @@ def test_payment_operational_filters_surface_domain_attention_states(
         attempt_status=PaymentAttempt.Status.SUCCESS,
         refund_status=Order.RefundStatus.REQUIRED,
     )
+    expired_refund = create_attempt(
+        order_status=Order.Status.EXPIRED,
+        attempt_status=PaymentAttempt.Status.SUCCESS,
+        refund_status=Order.RefundStatus.REQUIRED,
+    )
     inconsistent_pending = create_attempt(order_status=Order.Status.PAID)
     inconsistent_success = create_attempt(
         order_status=Order.Status.EXPIRED,
@@ -150,7 +155,7 @@ def test_payment_operational_filters_surface_domain_attention_states(
         "failed_pending": {retryable.pk},
         "payment_elapsed": {elapsed.pk},
         "payment_inventory": {invalid_inventory.pk},
-        "refund_required": {refund.pk},
+        "refund_required": {refund.pk, expired_refund.pk},
         "inconsistent": {
             inconsistent_pending.pk,
             inconsistent_success.pk,

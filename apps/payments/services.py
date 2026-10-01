@@ -104,7 +104,15 @@ def initiate_order_payment(*, order, at=None, gateway=None):
 
 def verify_order_payment(*, attempt, callback_data, at=None, gateway=None):
     """Verify untrusted return data, then atomically finalize its attempt."""
-    if attempt.status != PaymentAttempt.Status.PENDING:
+    if attempt.status == PaymentAttempt.Status.SUCCESS:
+        return attempt
+    if (
+        attempt.status == PaymentAttempt.Status.FAILED
+        and not Order.objects.filter(
+            pk=attempt.order_id,
+            status__in=(Order.Status.CANCELLED, Order.Status.EXPIRED),
+        ).exists()
+    ):
         return attempt
     if not attempt.gateway_reference:
         raise PaymentVerificationInvalid("Payment initiation is not complete.")
@@ -327,6 +335,10 @@ def finalize_verified_payment(
             pk=attempt.pk,
             order=locked_order,
         )
+        if verification.gateway_reference != locked_attempt.gateway_reference:
+            raise PaymentVerificationInvalid(
+                "The verified payment reference does not match."
+            )
         if locked_attempt.status == PaymentAttempt.Status.SUCCESS:
             if (
                 provider_transaction_id is not None
@@ -335,7 +347,25 @@ def finalize_verified_payment(
                 raise PaymentVerificationInvalid(
                     "The provider transaction does not match."
                 )
+            if locked_order.status in (
+                Order.Status.CANCELLED,
+                Order.Status.EXPIRED,
+            ):
+                return _record_late_success_for_terminal_order(
+                    order=locked_order,
+                    attempt=locked_attempt,
+                    provider_transaction_id=provider_transaction_id,
+                )
             return locked_attempt
+        if (
+            verification.status == VerificationStatus.SUCCESS
+            and locked_order.status in (Order.Status.CANCELLED, Order.Status.EXPIRED)
+        ):
+            return _record_late_success_for_terminal_order(
+                order=locked_order,
+                attempt=locked_attempt,
+                provider_transaction_id=provider_transaction_id,
+            )
         if locked_attempt.status != PaymentAttempt.Status.PENDING:
             return locked_attempt
 
@@ -357,7 +387,13 @@ def finalize_verified_payment(
         except PaymentWindowExpired:
             _expire_locked_order(order=locked_order, at=state_time)
             locked_attempt.refresh_from_db(fields=("status", "updated_at"))
-            return locked_attempt
+            if verification.status == VerificationStatus.FAILED:
+                return locked_attempt
+            return _record_late_success_for_terminal_order(
+                order=locked_order,
+                attempt=locked_attempt,
+                provider_transaction_id=provider_transaction_id,
+            )
 
         if verification.status == VerificationStatus.FAILED:
             locked_attempt.status = PaymentAttempt.Status.FAILED
@@ -472,7 +508,81 @@ def finalize_verified_payment(
             locked_order.refresh_from_db()
             _expire_locked_order(order=locked_order, at=expiry_time)
             locked_attempt.refresh_from_db(fields=("status", "updated_at"))
+            return _record_late_success_for_terminal_order(
+                order=locked_order,
+                attempt=locked_attempt,
+                provider_transaction_id=provider_transaction_id,
+            )
         return locked_attempt
+
+
+def _record_late_success_for_terminal_order(
+    *,
+    order,
+    attempt,
+    provider_transaction_id,
+):
+    """Preserve authoritative payment truth without reviving a terminal order."""
+    if order.status not in (Order.Status.CANCELLED, Order.Status.EXPIRED):
+        raise OrderNotPayable("The order is not terminal.")
+    if provider_transaction_id is not None and attempt.provider_transaction_id not in (
+        None,
+        provider_transaction_id,
+    ):
+        raise PaymentVerificationInvalid("The provider transaction does not match.")
+
+    previous_attempt_status = attempt.status
+    attempt_changed = attempt.status != PaymentAttempt.Status.SUCCESS
+    if attempt_changed or (
+        provider_transaction_id is not None
+        and attempt.pre_checkout_transaction_id is not None
+    ):
+        attempt.status = PaymentAttempt.Status.SUCCESS
+        if provider_transaction_id is not None:
+            attempt.provider_transaction_id = provider_transaction_id
+            attempt.pre_checkout_transaction_id = None
+        attempt.save(
+            update_fields=(
+                "status",
+                "provider_transaction_id",
+                "pre_checkout_transaction_id",
+                "updated_at",
+            )
+        )
+
+    refund_changed = order.refund_status == Order.RefundStatus.NOT_REQUIRED or (
+        attempt_changed and order.refund_status == Order.RefundStatus.RESOLVED
+    )
+    if refund_changed:
+        order.refund_status = Order.RefundStatus.REQUIRED
+        order.refund_resolved_at = None
+        order.refund_resolved_by = None
+        order.save(
+            update_fields=(
+                "refund_status",
+                "refund_resolved_at",
+                "refund_resolved_by",
+                "updated_at",
+            )
+        )
+
+    if attempt_changed or refund_changed:
+        order_id = order.pk
+        attempt_id = attempt.pk
+        order_status = order.status
+        refund_status = order.refund_status
+        transaction.on_commit(
+            lambda: logger.warning(
+                "late_payment_success_committed order_id=%s payment_attempt_id=%s "
+                "order_status=%s previous_attempt_status=%s refund_status=%s",
+                order_id,
+                attempt_id,
+                order_status,
+                previous_attempt_status,
+                refund_status,
+            )
+        )
+    return attempt
 
 
 def _prepare_payment_attempt(*, order, gateway_name, at=None):

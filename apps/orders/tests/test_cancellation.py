@@ -496,10 +496,11 @@ def test_concurrent_cancellation_and_payment_success_preserve_inventory_once():
         ).count()
         == 1
     )
-    if payment_result == PaymentAttempt.Status.SUCCESS:
-        assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert payment_result == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    if reservation.status == InventoryReservation.Status.CONSUMED:
         assert reservation.status == InventoryReservation.Status.CONSUMED
-        assert order.refund_status == Order.RefundStatus.REQUIRED
         assert (
             OrderStatusHistory.objects.filter(
                 order=order,
@@ -508,10 +509,7 @@ def test_concurrent_cancellation_and_payment_success_preserve_inventory_once():
             == 1
         )
     else:
-        assert payment_result == PaymentAttempt.Status.FAILED
-        assert attempt.status == PaymentAttempt.Status.FAILED
         assert reservation.status == InventoryReservation.Status.RELEASED
-        assert order.refund_status == Order.RefundStatus.NOT_REQUIRED
         assert (
             OrderStatusHistory.objects.filter(
                 order=order,
@@ -548,7 +546,7 @@ def test_concurrent_cancellation_and_expiry_commit_only_lock_winner():
             at=reservation.expires_at,
         )
         cancel_result = cancel_future.result()
-        assert expiry_future.result() == PaymentAttempt.Status.FAILED
+        assert expiry_future.result() == PaymentAttempt.Status.SUCCESS
 
     order.refresh_from_db()
     product.refresh_from_db()
@@ -556,11 +554,11 @@ def test_concurrent_cancellation_and_expiry_commit_only_lock_winner():
     attempt.refresh_from_db()
     assert product.stock_quantity == 10
     assert reservation.status == InventoryReservation.Status.RELEASED
-    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert order.refund_status == Order.RefundStatus.REQUIRED
     assert OrderStatusHistory.objects.filter(order=order).count() == 1
     if cancel_result == "changed":
         assert order.status == Order.Status.CANCELLED
-        assert order.refund_status == Order.RefundStatus.NOT_REQUIRED
     else:
         assert cancel_result == "rejected"
         assert order.status == Order.Status.EXPIRED

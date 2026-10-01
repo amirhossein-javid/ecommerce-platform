@@ -54,10 +54,12 @@ class PaymentOperationalStateFilter(admin.SimpleListFilter):
                 & ~Q(order__status=Order.Status.PENDING_PAYMENT)
                 | Q(
                     status=PaymentAttempt.Status.SUCCESS,
-                    order__status__in=(
-                        Order.Status.PENDING_PAYMENT,
-                        Order.Status.EXPIRED,
-                    ),
+                    order__status=Order.Status.PENDING_PAYMENT,
+                )
+                | Q(
+                    status=PaymentAttempt.Status.SUCCESS,
+                    order__status=Order.Status.EXPIRED,
+                    order__refund_status=Order.RefundStatus.NOT_REQUIRED,
                 )
                 | Q(
                     status=PaymentAttempt.Status.SUCCESS,
@@ -205,8 +207,12 @@ class PaymentAttemptAdmin(ReadOnlyPaymentAdmin):
             )
             or (
                 obj.status == PaymentAttempt.Status.SUCCESS
-                and obj.order.status
-                in (Order.Status.PENDING_PAYMENT, Order.Status.EXPIRED)
+                and obj.order.status == Order.Status.PENDING_PAYMENT
+            )
+            or (
+                obj.status == PaymentAttempt.Status.SUCCESS
+                and obj.order.status == Order.Status.EXPIRED
+                and obj.order.refund_status == Order.RefundStatus.NOT_REQUIRED
             )
             or (
                 obj.status == PaymentAttempt.Status.SUCCESS

@@ -390,6 +390,25 @@ def test_refund_cannot_be_resolved_when_not_required():
 
 
 @pytest.mark.django_db
+def test_expired_order_late_payment_refund_resolution_is_idempotent():
+    customer = create_customer()
+    operator = create_operator("expired-refund-operator@example.com")
+    order = create_order(customer, status=Order.Status.EXPIRED)
+    Order.objects.filter(pk=order.pk).update(refund_status=Order.RefundStatus.REQUIRED)
+
+    resolution = resolve_order_refund(order=order, operator=operator)
+    duplicate = resolve_order_refund(order=order, operator=operator)
+
+    order.refresh_from_db()
+    assert resolution.changed is True
+    assert duplicate.changed is False
+    assert order.status == Order.Status.EXPIRED
+    assert order.refund_status == Order.RefundStatus.RESOLVED
+    assert order.refund_resolved_by == operator
+    assert order.refund_resolved_at is not None
+
+
+@pytest.mark.django_db
 def test_paid_cancellation_requires_refund_without_rewriting_payment_success():
     customer = create_customer()
     operator = create_operator("payment-history-operator@example.com")

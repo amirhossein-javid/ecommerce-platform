@@ -207,10 +207,14 @@ def test_admin_paid_cancellation_restores_stock_exactly_once(client):
 
 
 @pytest.mark.django_db
-def test_admin_refund_resolution_action_uses_domain_service(client):
+@pytest.mark.parametrize(
+    "order_status",
+    [Order.Status.CANCELLED, Order.Status.EXPIRED],
+)
+def test_admin_refund_resolution_action_uses_domain_service(client, order_status):
     operator = User.objects.create_superuser("admin@example.com", "password")
     order = create_order(
-        status=Order.Status.CANCELLED,
+        status=order_status,
         refund_status=Order.RefundStatus.REQUIRED,
     )
     client.force_login(operator)
@@ -220,6 +224,7 @@ def test_admin_refund_resolution_action_uses_domain_service(client):
     assert response.status_code == 302
     order.refresh_from_db()
     assert order.refund_status == Order.RefundStatus.RESOLVED
+    assert order.status == order_status
     assert order.refund_resolved_by == operator
     assert order.refund_resolved_at is not None
 

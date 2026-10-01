@@ -373,7 +373,7 @@ def resolve_order_refund(*, order, operator, at=None):
                 "The refund was resolved through a different command."
             )
         if (
-            locked_order.status != Order.Status.CANCELLED
+            locked_order.status not in (Order.Status.CANCELLED, Order.Status.EXPIRED)
             or locked_order.refund_status != Order.RefundStatus.REQUIRED
         ):
             raise RefundResolutionError("The order does not require a refund.")
