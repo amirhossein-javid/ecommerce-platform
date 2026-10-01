@@ -181,9 +181,71 @@ SHIPPED         -> DELIVERED
   paths.
 - Lifecycle timestamps on `Order`, not `Shipment`, are the fulfillment source
   of truth.
-- Admin operator actions must call lifecycle services and preserve locking,
-  audit history, and actor attribution; admin must not write lifecycle state
-  directly.
+
+## Store Operations and Observability
+
+### Django Admin and Operator Boundaries
+
+- Django Admin is an operator interface, not a generic state editor. Order,
+  payment, reservation, refund, shipment lifecycle, lifecycle-driven stock,
+  and audit state must not be mutated directly through admin model forms or
+  bulk updates.
+- Fulfillment, cancellation, and refund actions must delegate to the existing
+  domain services so locking, exactly-once inventory behavior, audit history,
+  idempotency, and actor attribution remain intact.
+- Admin access or `is_staff` alone does not authorize privileged operations.
+  Actions require the relevant Django model permission, and non-superusers must
+  not grant privileges or manage privileged accounts.
+- Protect operational records from unsafe add/delete/change paths. Payment
+  attempts and durable Bale webhook records are read-only in Admin; orders are
+  changed only through explicit domain-backed actions. Shipment details may be
+  edited only while the order is PROCESSING and remain protected by the model's
+  locked invariant checks.
+- Catalog management and explicit physical-stock corrections may use the
+  validated, locked Product Admin workflow; stock must not be reduced below
+  unexpired ACTIVE reservations or used to bypass payment/cancellation services.
+- Do not expose gateway credentials, private references, provider transaction
+  identifiers, idempotency keys, payment URLs/tokens, raw webhook payloads, or
+  unnecessary customer/payment data in Admin.
+- Operational visibility is derived from authoritative domain fields using
+  list displays, filters, annotations, and read-only indicators. Do not add
+  persistent attention flags, arbitrary "stuck" timeouts, or per-row queries;
+  add query-count tests where changelist N+1 regressions are plausible.
+
+### Application Logging
+
+- Use Python/Django logging for meaningful lifecycle, cancellation, inventory,
+  payment, Bale recovery, refund, and fulfillment outcomes. Prefer stable IDs,
+  actor type/ID, previous/new state, outcome, and a safe failure category.
+- Important committed successes must be logged with `transaction.on_commit()`;
+  callbacks scheduled inside savepoints must disappear on rollback. Logging
+  must not change exception, transaction, locking, retry, or idempotency
+  behavior and must not duplicate `OrderStatusHistory` as another audit system.
+- Use INFO for important successful transitions, WARNING for recoverable or
+  attention-worthy conditions, and ERROR for unexpected failures at the layer
+  with useful domain context. Do not swallow exceptions merely to log them or
+  emit duplicate stack traces across layers.
+- Never log secrets, credentials, authorization headers, payment URLs/tokens,
+  idempotency keys, raw gateway/webhook payloads, private provider references or
+  transaction identifiers, untrusted exception text, or unnecessary customer
+  PII such as email, phone, and address data.
+
+### Health and Recovery
+
+- `GET /api/v1/health/` is the unauthenticated liveness probe. It reports that
+  Django can serve a request and must remain cheap and dependency-free.
+- `GET /api/v1/health/readiness/` is the unauthenticated readiness probe. It
+  performs one minimal `SELECT 1` against the authoritative PostgreSQL database
+  and returns HTTP 503 with a fixed, non-sensitive body when unavailable.
+- PostgreSQL is currently the only request-serving readiness dependency. Do not
+  call Bale or other third parties from readiness, and do not add Redis, cache,
+  or Celery checks unless the architecture later makes them required to serve
+  normal requests.
+- Existing recovery paths are the `recover_bale_payments` management command,
+  domain-backed Admin lifecycle/cancellation/refund actions, and payment service
+  retry/expiry handling. Recovery must reuse those services and invariants.
+  Do not add speculative commands or generic state-editing/fix-data tools; add
+  the smallest idempotent command only for a demonstrated operational gap.
 
 ## API and Data Rules
 
@@ -220,6 +282,10 @@ For API changes also run:
 
 Run production/security checks when the change affects those areas.
 
+The existing drf-spectacular enum naming collision warning is known and
+non-blocking. Do not spend scope on it unless future work introduces or exposes
+a concrete schema problem.
+
 ## Git and Change Discipline
 
 - Codex must never commit, push, merge, rebase, create/switch branches, stash,
@@ -229,33 +295,25 @@ Run production/security checks when the change affects those areas.
 - Keep tasks narrowly scoped, preserve unrelated work, inspect the final diff,
   and report changes, checks, and limitations concisely.
 
-## Completed Phases
+## Current State and Roadmap
 
-- Phase 1 — Foundation: complete
-- Phase 2 — Accounts/Auth: complete
-- Phase 3 — Products/Catalog: complete
-- Phase 4 — Shopping/Orders: complete
-- Phase 5 — Payments/Bale: complete
-- Phase 6 — Fulfillment/Order Lifecycle: complete; merged to `main` via
-  `Merge branch 'feature/fulfillment'`
+Phases 1–7 are complete. Phase 8 — Production Deployment & Final Hardening —
+is the only remaining backend phase:
 
-## Remaining Backend Roadmap
+- Finalize production settings, secrets, HTTPS/security behavior, deployment,
+  container/runtime behavior, and production validation.
+- Perform the final backend security, API/schema, performance, and concurrency
+  review.
+- Run real Bale network end-to-end validation in the selected deployment
+  environment.
+- Review and hand off the frontend-facing API contract after the frontend stack
+  is selected.
 
-### Phase 7 — Store Operations / Admin / Observability
-
-- Production-safe Django admin/operator workflows
-- Operational visibility for orders, payments, refunds, and inventory
-- Logging, health/readiness, and recovery improvements where justified
-- Permission, security, and admin hardening
-- Avoid unnecessary dashboards and infrastructure
-
-### Phase 8 — Production Deployment and Final Hardening
-
-- Production settings, security, deployment, container, and runtime checks
-- Environment/secrets and applicable static/media strategy
-- Final API/schema/security/performance review
-- Real Bale network end-to-end testing when a deployment environment exists
-- Frontend-facing API contract review
+No deployment provider has been selected. Keep production configuration
+provider-neutral and environment-driven until that decision is made. HSTS and
+deployment-specific HTTPS hardening are intentionally deferred to Phase 8. The
+frontend stack is also not finalized and must be decided before the final
+frontend-facing audit and handoff.
 
 After Phase 8, the backend is considered feature-complete for the portfolio
 scope and frontend implementation begins. Keep backend APIs stable unless a
