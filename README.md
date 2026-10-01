@@ -29,14 +29,49 @@ docker compose run --rm web ruff format --check .
 docker compose run --rm web python manage.py check
 ```
 
-## Production proxy settings
+## Production settings and security
 
-HSTS is disabled by default. Set `DJANGO_SECURE_HSTS_SECONDS` only after HTTPS
-is working reliably for the production domain.
+Production uses `config.settings.production`, always disables `DEBUG`, redirects
+HTTP to HTTPS, uses secure/HttpOnly cookies, denies framing, and enables a
+one-hour HSTS policy by default. Production startup fails when required settings
+are missing or retain known development/placeholder values.
+
+Required production configuration:
+
+- `DJANGO_SECRET_KEY`: a random value of at least 50 characters. It must not be
+  a Django-generated or documented placeholder.
+- `DJANGO_JWT_SIGNING_KEY`: a separate random value of at least 50 characters.
+- `DJANGO_ALLOWED_HOSTS`: explicit comma-separated hostnames. `*`, URL schemes,
+  and paths are rejected.
+- `DATABASE_URL`: the production PostgreSQL URL. The Compose development URL is
+  rejected.
+
+Optional production configuration:
+
+- `DJANGO_SECRET_KEY_FALLBACKS`: comma-separated previous strong keys used only
+  during a controlled Django secret rotation. Remove old keys after the
+  rotation window.
+- `DJANGO_CSRF_TRUSTED_ORIGINS`: comma-separated HTTPS origins that need to make
+  trusted cross-origin unsafe requests. Do not add an origin merely because it
+  is present in the CORS allowlist.
+- `DJANGO_CORS_ALLOWED_ORIGINS`: comma-separated HTTPS browser frontend origins.
+  CORS is limited to `/api/`, never allows every origin, and does not allow
+  cookie credentials. Bearer authorization and `X-Cart-Token` are supported.
+- `DJANGO_LOG_LEVEL` and `DJANGO_APP_LOG_LEVEL`: `INFO`, `WARNING`, `ERROR`, or
+  `CRITICAL`; both default to `INFO`. Logs go to the process console for the
+  deployment environment to collect.
+
+`DJANGO_SECURE_HSTS_SECONDS` defaults to `3600`. Increase it gradually only
+after HTTPS works reliably for every production request. Enable
+`DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS` only when every subdomain is permanently
+HTTPS-capable. `DJANGO_SECURE_HSTS_PRELOAD=True` is rejected unless subdomains
+are included and HSTS is at least one year; browser preload-list submission is
+a separate, deployment-specific decision.
 
 Set `DJANGO_TRUST_X_FORWARDED_PROTO=True` only when Django runs behind a trusted
-reverse proxy that removes any client-supplied `X-Forwarded-Proto` header and
-sets the header itself. Leave it disabled when that assumption does not hold.
+reverse proxy that strips any client-supplied `X-Forwarded-Proto` header and
+sets it from the actual connection. Leave it disabled when that assumption does
+not hold. No proxy vendor or network topology is assumed by the application.
 
 ## Manual Bale test-payment smoke test
 
