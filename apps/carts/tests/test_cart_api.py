@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 import pytest
+from django.conf import settings
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -8,6 +10,15 @@ from rest_framework.test import APIClient
 from apps.accounts.models import CustomerProfile, User
 from apps.carts.models import Cart, CartItem
 from apps.products.models import Category, Product, ProductImage
+
+ONE_CART_MUTATION_PER_MINUTE = {
+    **settings.REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        **settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+        "cart_mutation": "1/minute",
+    },
+    "NUM_PROXIES": 0,
+}
 
 
 @pytest.fixture
@@ -89,6 +100,39 @@ def test_guest_first_add_creates_cart_and_returns_token(api_client, product):
     cart = Cart.objects.get(customer=None)
     assert response["X-Cart-Token"] == str(cart.token)
     assert response.json()["items"][0]["quantity"] == 2
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_CART_MUTATION_PER_MINUTE)
+def test_guest_cart_throttle_prevents_rows_and_ignores_forwarded_ip(
+    api_client, product, configure_throttle_rates
+):
+    configure_throttle_rates(cart_mutation="1/minute")
+    first_response = add_item(
+        api_client,
+        product,
+        HTTP_X_FORWARDED_FOR="198.51.100.1",
+    )
+    blocked_response = add_item(
+        api_client,
+        product,
+        HTTP_X_FORWARDED_FOR="198.51.100.2",
+    )
+
+    assert first_response.status_code == status.HTTP_200_OK
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert Cart.objects.count() == 1
+    assert CartItem.objects.count() == 1
+
+    independent_response = add_item(
+        api_client,
+        product,
+        REMOTE_ADDR="203.0.113.10",
+    )
+
+    assert independent_response.status_code == status.HTTP_200_OK
+    assert Cart.objects.count() == 2
+    assert CartItem.objects.count() == 2
 
 
 @pytest.mark.django_db

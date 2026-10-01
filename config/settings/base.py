@@ -4,6 +4,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -115,12 +116,62 @@ CORS_ALLOW_HEADERS = [
     "x-requested-with",
 ]
 
+
+def _throttle_rate(variable_name, default):
+    rate = env(variable_name, default=default).strip()
+    try:
+        request_count, period = rate.split("/", maxsplit=1)
+    except ValueError as exc:
+        raise ImproperlyConfigured(
+            f"{variable_name} must use the '<requests>/<period>' format."
+        ) from exc
+    if (
+        not request_count.isdigit()
+        or int(request_count) <= 0
+        or period not in {"s", "second", "m", "minute", "h", "hour", "d", "day"}
+    ):
+        raise ImproperlyConfigured(
+            f"{variable_name} must use a positive request count and a supported period."
+        )
+    return rate
+
+
+THROTTLE_NUM_PROXIES = env.int("DJANGO_THROTTLE_NUM_PROXIES", default=0)
+if THROTTLE_NUM_PROXIES < 0:
+    raise ImproperlyConfigured(
+        "DJANGO_THROTTLE_NUM_PROXIES must be zero or a positive integer."
+    )
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "auth_register": _throttle_rate("DJANGO_THROTTLE_AUTH_REGISTER_RATE", "5/hour"),
+        "auth_login": _throttle_rate("DJANGO_THROTTLE_AUTH_LOGIN_RATE", "10/minute"),
+        "auth_refresh": _throttle_rate(
+            "DJANGO_THROTTLE_AUTH_REFRESH_RATE", "30/minute"
+        ),
+        "cart_mutation": _throttle_rate(
+            "DJANGO_THROTTLE_CART_MUTATION_RATE", "60/minute"
+        ),
+        "checkout": _throttle_rate("DJANGO_THROTTLE_CHECKOUT_RATE", "10/minute"),
+        "payment_initiate": _throttle_rate(
+            "DJANGO_THROTTLE_PAYMENT_INITIATE_RATE", "10/minute"
+        ),
+        "payment_verify": _throttle_rate(
+            "DJANGO_THROTTLE_PAYMENT_VERIFY_RATE", "20/minute"
+        ),
+        "bale_webhook": _throttle_rate(
+            "DJANGO_THROTTLE_BALE_WEBHOOK_RATE", "300/minute"
+        ),
+    },
+    "NUM_PROXIES": THROTTLE_NUM_PROXIES,
 }
 
 SIMPLE_JWT = {

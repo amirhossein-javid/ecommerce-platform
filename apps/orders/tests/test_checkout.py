@@ -3,8 +3,10 @@ from decimal import Decimal
 from threading import Barrier
 
 import pytest
+from django.conf import settings
 from django.db import close_old_connections
 from django.db.models import Sum
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -22,6 +24,14 @@ from apps.orders.services import (
     checkout_customer_cart,
 )
 from apps.products.models import Category, Product
+
+ONE_CHECKOUT_PER_MINUTE = {
+    **settings.REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        **settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+        "checkout": "1/minute",
+    },
+}
 
 
 @pytest.fixture
@@ -157,6 +167,33 @@ def test_checkout_uses_default_address_and_returns_pending_order(
     assert cart.status == Cart.Status.CONVERTED
     assert "inventory_reservations" not in data
     assert "stock_quantity" not in str(data)
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_CHECKOUT_PER_MINUTE)
+def test_checkout_throttle_prevents_order_and_reservation_creation(
+    api_client,
+    customer,
+    default_address,
+    product,
+    configure_throttle_rates,
+):
+    configure_throttle_rates(checkout="1/minute")
+    first_cart = create_cart(customer, [(product, 1)])
+    api_client.force_authenticate(user=customer.user)
+
+    first_response = checkout(api_client)
+    second_cart = create_cart(customer, [(product, 1)])
+    blocked_response = checkout(api_client)
+
+    assert first_response.status_code == status.HTTP_201_CREATED
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert Order.objects.count() == 1
+    assert InventoryReservation.objects.count() == 1
+    first_cart.refresh_from_db()
+    second_cart.refresh_from_db()
+    assert first_cart.status == Cart.Status.CONVERTED
+    assert second_cart.status == Cart.Status.ACTIVE
 
 
 @pytest.mark.django_db

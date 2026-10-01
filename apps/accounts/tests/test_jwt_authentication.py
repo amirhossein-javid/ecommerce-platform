@@ -1,4 +1,6 @@
 import pytest
+from django.conf import settings
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -9,6 +11,15 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from apps.accounts.models import User
+
+ONE_AUTH_REQUEST_PER_MINUTE = {
+    **settings.REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        **settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+        "auth_login": "1/minute",
+        "auth_refresh": "1/minute",
+    },
+}
 
 
 class ProtectedTestView(APIView):
@@ -43,6 +54,27 @@ def test_login_returns_access_and_refresh_tokens(api_client, user):
     assert set(response.json()) == {"access", "refresh"}
     assert AccessToken(response.json()["access"])["user_id"] == str(user.pk)
     assert RefreshToken(response.json()["refresh"])["user_id"] == str(user.pk)
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_AUTH_REQUEST_PER_MINUTE)
+def test_login_throttle_counts_failed_attempts(
+    api_client, user, configure_throttle_rates
+):
+    configure_throttle_rates(auth_login="1/minute")
+    first_response = api_client.post(
+        reverse("accounts:login"),
+        {"email": user.email, "password": "wrong-password"},
+        format="json",
+    )
+    blocked_response = api_client.post(
+        reverse("accounts:login"),
+        {"email": user.email, "password": "strong-password"},
+        format="json",
+    )
+
+    assert first_response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
 @pytest.mark.django_db
@@ -165,6 +197,28 @@ def test_refresh_rotates_token_and_blacklists_previous_refresh(api_client, user)
     )
 
     assert reused_response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_AUTH_REQUEST_PER_MINUTE)
+def test_refresh_throttle_blocks_additional_token_rotation(
+    api_client, user, configure_throttle_rates
+):
+    configure_throttle_rates(auth_refresh="1/minute")
+    first_response = api_client.post(
+        reverse("accounts:token-refresh"),
+        {"refresh": str(RefreshToken.for_user(user))},
+        format="json",
+    )
+    blocked_response = api_client.post(
+        reverse("accounts:token-refresh"),
+        {"refresh": first_response.json()["refresh"]},
+        format="json",
+    )
+
+    assert first_response.status_code == status.HTTP_200_OK
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert BlacklistedToken.objects.count() == 1
 
 
 @pytest.mark.django_db

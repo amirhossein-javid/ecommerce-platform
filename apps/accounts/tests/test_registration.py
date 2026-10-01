@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import serializers, status
 from rest_framework.test import APIClient
@@ -14,6 +16,15 @@ VALID_REGISTRATION_DATA = {
     "first_name": "Ali",
     "last_name": "Ahmadi",
     "phone_number": "+989121234567",
+}
+
+ONE_REGISTRATION_PER_MINUTE = {
+    **settings.REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        **settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+        "auth_register": "1/minute",
+    },
+    "NUM_PROXIES": 0,
 }
 
 
@@ -47,6 +58,41 @@ def test_registration_creates_user_and_customer_profile_atomically(api_client):
     assert Address.objects.filter(customer_profile=profile).exists() is False
     assert "access" not in response.json()
     assert "refresh" not in response.json()
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_REGISTRATION_PER_MINUTE)
+def test_registration_throttle_uses_remote_ip_and_prevents_user_creation(
+    api_client, configure_throttle_rates
+):
+    configure_throttle_rates(auth_register="1/minute")
+    first_response = api_client.post(
+        reverse("accounts:register"),
+        VALID_REGISTRATION_DATA,
+        format="json",
+        HTTP_X_FORWARDED_FOR="198.51.100.1",
+    )
+    blocked_response = api_client.post(
+        reverse("accounts:register"),
+        {**VALID_REGISTRATION_DATA, "email": "blocked@example.com"},
+        format="json",
+        HTTP_X_FORWARDED_FOR="198.51.100.2",
+    )
+
+    assert first_response.status_code == status.HTTP_201_CREATED
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert User.objects.filter(email="blocked@example.com").exists() is False
+    assert CustomerProfile.objects.count() == 1
+
+    independent_response = api_client.post(
+        reverse("accounts:register"),
+        {**VALID_REGISTRATION_DATA, "email": "independent@example.com"},
+        format="json",
+        REMOTE_ADDR="203.0.113.10",
+    )
+
+    assert independent_response.status_code == status.HTTP_201_CREATED
+    assert CustomerProfile.objects.count() == 2
 
 
 @pytest.mark.django_db

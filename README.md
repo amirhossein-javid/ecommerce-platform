@@ -77,6 +77,35 @@ reverse proxy that strips any client-supplied `X-Forwarded-Proto` header and
 sets it from the actual connection. Leave it disabled when that assumption does
 not hold. No proxy vendor or network topology is assumed by the application.
 
+### Application request throttling
+
+Abuse-sensitive authentication, cart mutation, checkout, payment, and Bale
+webhook endpoints use DRF scoped throttles. Anonymous scopes are keyed by client
+IP and authenticated commerce scopes by user ID. The limits are configured with:
+
+- `DJANGO_THROTTLE_AUTH_REGISTER_RATE`
+- `DJANGO_THROTTLE_AUTH_LOGIN_RATE`
+- `DJANGO_THROTTLE_AUTH_REFRESH_RATE`
+- `DJANGO_THROTTLE_CART_MUTATION_RATE`
+- `DJANGO_THROTTLE_CHECKOUT_RATE`
+- `DJANGO_THROTTLE_PAYMENT_INITIATE_RATE`
+- `DJANGO_THROTTLE_PAYMENT_VERIFY_RATE`
+- `DJANGO_THROTTLE_BALE_WEBHOOK_RATE`
+
+Rates use DRF's positive `<requests>/<period>` format, such as `10/minute`.
+By default `DJANGO_THROTTLE_NUM_PROXIES=0`, so client-supplied
+`X-Forwarded-For` is ignored and `REMOTE_ADDR` is used. Set it to the exact
+number of trusted ingress proxies only when every proxy in that chain strips or
+replaces client-supplied forwarding headers. An incorrect value can allow IP
+throttle bypasses or combine unrelated clients under one identity.
+
+The default local-memory cache keeps this protection dependency-free and is
+appropriate for the image's conservative single-worker default. Each worker or
+replica has an independent counter; deployments that scale beyond one process
+must add a trusted shared Django cache or enforce equivalent limits at the
+ingress. DRF throttling is defense in depth, not a substitute for provider or
+network-level denial-of-service protection.
+
 ## Production image and deployment lifecycle
 
 The default Docker build installs production requirements, collects immutable

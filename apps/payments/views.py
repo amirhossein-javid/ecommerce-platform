@@ -72,6 +72,8 @@ class CustomerPaymentMixin:
 
 
 class PaymentInitiationView(CustomerPaymentMixin, APIView):
+    throttle_scope = "payment_initiate"
+
     @extend_schema(
         request=PaymentInitiationRequestSerializer,
         responses={
@@ -118,6 +120,8 @@ class PaymentInitiationView(CustomerPaymentMixin, APIView):
 
 
 class PaymentVerificationView(CustomerPaymentMixin, APIView):
+    throttle_scope = "payment_verify"
+
     @extend_schema(
         request=PaymentVerificationRequestSerializer,
         responses={
@@ -164,6 +168,7 @@ class PaymentVerificationView(CustomerPaymentMixin, APIView):
 class BaleWebhookView(APIView):
     authentication_classes = ()
     permission_classes = (AllowAny,)
+    throttle_scope = "bale_webhook"
 
     @extend_schema(
         request=BaleUpdateSerializer,

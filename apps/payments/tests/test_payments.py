@@ -8,7 +8,9 @@ from time import sleep
 from uuid import uuid4
 
 import pytest
+from django.conf import settings
 from django.db import close_old_connections, transaction
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -34,6 +36,15 @@ from apps.payments.services import (
     verify_order_payment,
 )
 from apps.products.models import Category, Product
+
+ONE_PAYMENT_REQUEST_PER_MINUTE = {
+    **settings.REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        **settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+        "payment_initiate": "1/minute",
+        "payment_verify": "1/minute",
+    },
+}
 
 
 class FakeGateway:
@@ -391,6 +402,30 @@ def test_duplicate_initiation_returns_existing_pending_attempt(
 
 
 @pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_PAYMENT_REQUEST_PER_MINUTE)
+def test_payment_initiation_throttle_prevents_attempt_and_gateway_call(
+    api_client,
+    payable_order,
+    gateway,
+    configure_throttle_rates,
+):
+    configure_throttle_rates(payment_initiate="1/minute")
+    order, _, _ = payable_order
+    api_client.force_authenticate(user=order.customer.user)
+
+    first_response = api_client.post(initiate_url(order), {}, format="json")
+    PaymentAttempt.objects.filter(order=order).update(
+        status=PaymentAttempt.Status.FAILED
+    )
+    blocked_response = api_client.post(initiate_url(order), {}, format="json")
+
+    assert first_response.status_code == status.HTTP_201_CREATED
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert PaymentAttempt.objects.filter(order=order).count() == 1
+    assert len(gateway.initiations) == 1
+
+
+@pytest.mark.django_db
 def test_ambiguous_gateway_timeout_retries_same_durable_idempotency_key(
     payable_order,
 ):
@@ -506,6 +541,45 @@ def test_verification_does_not_expose_payment_gateway_error_details(
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.json() == {"detail": "Payment gateway is temporarily unavailable."}
     assert sensitive_detail not in response.content.decode()
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_PAYMENT_REQUEST_PER_MINUTE)
+def test_payment_verification_throttle_prevents_gateway_call(
+    api_client,
+    payable_order,
+    gateway,
+    monkeypatch,
+    configure_throttle_rates,
+):
+    configure_throttle_rates(payment_verify="1/minute")
+    order, _, _ = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    verification_calls = []
+
+    def unavailable_verification(**kwargs):
+        verification_calls.append(kwargs)
+        raise PaymentGatewayUnavailable("temporary failure")
+
+    monkeypatch.setattr(gateway, "verify", unavailable_verification)
+    api_client.force_authenticate(user=order.customer.user)
+
+    first_response = api_client.post(
+        verify_url(attempt),
+        {"callback_data": {}},
+        format="json",
+    )
+    blocked_response = api_client.post(
+        verify_url(attempt),
+        {"callback_data": {}},
+        format="json",
+    )
+
+    assert first_response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert len(verification_calls) == 1
+    attempt.refresh_from_db()
+    assert attempt.status == PaymentAttempt.Status.PENDING
 
 
 @pytest.mark.django_db

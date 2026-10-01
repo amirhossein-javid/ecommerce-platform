@@ -20,6 +20,7 @@ PRODUCTION_ENV = {
     "DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS": "False",
     "DJANGO_SECURE_HSTS_PRELOAD": "False",
     "DJANGO_TRUST_X_FORWARDED_PROTO": "False",
+    "DJANGO_THROTTLE_NUM_PROXIES": "0",
     "DJANGO_LOG_LEVEL": "WARNING",
     "DJANGO_APP_LOG_LEVEL": "INFO",
     "DJANGO_DB_CONN_MAX_AGE": "60",
@@ -82,6 +83,8 @@ print(json.dumps({
     "APP_LOG_LEVEL": settings.LOGGING["loggers"]["apps"]["level"],
     "DB_CONN_MAX_AGE": settings.DATABASES["default"]["CONN_MAX_AGE"],
     "DB_CONN_HEALTH_CHECKS": settings.DATABASES["default"]["CONN_HEALTH_CHECKS"],
+    "THROTTLE_NUM_PROXIES": settings.REST_FRAMEWORK["NUM_PROXIES"],
+    "THROTTLE_RATES": settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
     "MIDDLEWARE": settings.MIDDLEWARE,
     "DEFAULT_STORAGE": settings.STORAGES["default"]["BACKEND"],
     "STATIC_STORAGE": settings.STORAGES["staticfiles"]["BACKEND"],
@@ -133,6 +136,17 @@ def test_production_settings_apply_security_contract():
         "APP_LOG_LEVEL": "INFO",
         "DB_CONN_MAX_AGE": 60,
         "DB_CONN_HEALTH_CHECKS": True,
+        "THROTTLE_NUM_PROXIES": 0,
+        "THROTTLE_RATES": {
+            "auth_register": "5/hour",
+            "auth_login": "10/minute",
+            "auth_refresh": "30/minute",
+            "cart_mutation": "60/minute",
+            "checkout": "10/minute",
+            "payment_initiate": "10/minute",
+            "payment_verify": "20/minute",
+            "bale_webhook": "300/minute",
+        },
         "MIDDLEWARE": [
             "django.middleware.security.SecurityMiddleware",
             "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -177,6 +191,11 @@ def test_production_settings_apply_security_contract():
         ({"DJANGO_SECURE_HSTS_PRELOAD": "True"}, "DJANGO_SECURE_HSTS_PRELOAD"),
         ({"DJANGO_LOG_LEVEL": "DEBUG"}, "DJANGO_LOG_LEVEL"),
         ({"DJANGO_DB_CONN_MAX_AGE": "-1"}, "DJANGO_DB_CONN_MAX_AGE"),
+        ({"DJANGO_THROTTLE_NUM_PROXIES": "-1"}, "DJANGO_THROTTLE_NUM_PROXIES"),
+        (
+            {"DJANGO_THROTTLE_AUTH_LOGIN_RATE": "unlimited"},
+            "DJANGO_THROTTLE_AUTH_LOGIN_RATE",
+        ),
     ],
 )
 def test_production_settings_reject_unsafe_configuration(overrides, invalid_variable):

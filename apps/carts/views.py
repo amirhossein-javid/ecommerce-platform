@@ -216,6 +216,8 @@ class CartView(CurrentCartMixin, APIView):
 
 
 class CartItemCreateView(CurrentCartMixin, APIView):
+    throttle_scope = "cart_mutation"
+
     @extend_schema(
         parameters=[cart_token_request_parameter, cart_token_response_parameter],
         request=AddCartItemSerializer,
@@ -257,6 +259,8 @@ class CartItemCreateView(CurrentCartMixin, APIView):
 
 
 class CartItemDetailView(CurrentCartMixin, APIView):
+    throttle_scope = "cart_mutation"
+
     @extend_schema(
         parameters=[cart_token_request_parameter],
         request=ChangeCartItemQuantitySerializer,
@@ -315,6 +319,7 @@ class CartItemDetailView(CurrentCartMixin, APIView):
 
 class CartMergeView(CurrentCartMixin, APIView):
     permission_classes = (IsAuthenticated,)
+    throttle_scope = "cart_mutation"
 
     @extend_schema(
         parameters=[required_cart_token_parameter],

@@ -136,6 +136,7 @@ class CustomerOrderCancellationView(CustomerOrderMixin, GenericAPIView):
 
 class CheckoutView(APIView):
     permission_classes = (IsAuthenticated,)
+    throttle_scope = "checkout"
 
     @extend_schema(
         request=CheckoutRequestSerializer,

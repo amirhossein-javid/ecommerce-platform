@@ -38,6 +38,7 @@ class CurrentCustomerProfileMixin:
 class RegistrationView(APIView):
     authentication_classes = ()
     permission_classes = (AllowAny,)
+    throttle_scope = "auth_register"
 
     @extend_schema(
         request=CustomerRegistrationSerializer,
@@ -148,12 +149,13 @@ class SetDefaultAddressView(CurrentCustomerProfileMixin, APIView):
 
 @extend_schema_view(post=extend_schema(tags=["Authentication"]))
 class LoginView(TokenObtainPairView):
-    pass
+    throttle_scope = "auth_login"
 
 
 @extend_schema_view(post=extend_schema(tags=["Authentication"]))
 class RefreshView(TokenRefreshView):
     serializer_class = SafeTokenRefreshSerializer
+    throttle_scope = "auth_refresh"
 
 
 class LogoutView(APIView):

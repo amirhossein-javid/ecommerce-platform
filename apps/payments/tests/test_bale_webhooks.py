@@ -8,6 +8,7 @@ from time import sleep
 from uuid import uuid4
 
 import pytest
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, close_old_connections, transaction
@@ -32,6 +33,14 @@ from apps.payments.models import BaleWebhookUpdate, PaymentAttempt
 from apps.products.models import Category, Product
 
 WEBHOOK_URL = reverse("payments:bale-webhook")
+
+ONE_BALE_WEBHOOK_PER_MINUTE = {
+    **settings.REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        **settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+        "bale_webhook": "1/minute",
+    },
+}
 
 
 class FakeBaleWebhookGateway:
@@ -263,6 +272,31 @@ def test_valid_pre_checkout_is_approved_without_finalizing(monkeypatch):
     assert attempt.provider_transaction_id == "tx-1"
     assert reservation.status == InventoryReservation.Status.ACTIVE
     assert product.stock_quantity == 10
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_BALE_WEBHOOK_PER_MINUTE)
+def test_bale_webhook_throttle_prevents_record_and_gateway_call(
+    monkeypatch, configure_throttle_rates
+):
+    configure_throttle_rates(bale_webhook="1/minute")
+    _, _, _, attempt = create_bale_payment()
+    gateway = FakeBaleWebhookGateway()
+    configure_gateway(monkeypatch, gateway)
+    client = APIClient()
+
+    first_response = client.post(WEBHOOK_URL, {"update_id": 100}, format="json")
+    blocked_response = client.post(
+        WEBHOOK_URL,
+        pre_checkout_update(attempt, update_id=101),
+        format="json",
+    )
+
+    assert first_response.status_code == status.HTTP_200_OK
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert BaleWebhookUpdate.objects.exists() is False
+    assert gateway.answers == []
+    assert gateway.inquiries == []
 
 
 @pytest.mark.django_db
