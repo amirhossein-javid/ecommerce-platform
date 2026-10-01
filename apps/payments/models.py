@@ -116,6 +116,12 @@ class PaymentAttempt(models.Model):
     def __str__(self):
         return f"Payment attempt {self.pk} for order {self.order_id} ({self.status})"
 
+    @property
+    def customer_payment_identifier(self):
+        if self.gateway == "bale":
+            return self.gateway_reference
+        return None
+
 
 class BaleWebhookUpdate(models.Model):
     class EventType(models.TextChoices):

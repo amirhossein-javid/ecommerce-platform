@@ -374,7 +374,7 @@ def test_bale_gateway_repr_does_not_expose_credentials():
 
 
 @pytest.mark.django_db
-def test_bale_identifier_is_persisted_without_tokens_or_fabricated_url(monkeypatch):
+def test_bale_identifier_is_exposed_only_as_client_handoff_value(monkeypatch):
     order = create_payable_order()
     session = StubSession(StubResponse(body={"ok": True, "result": "invoice-123"}))
     gateway = make_gateway(session)
@@ -390,7 +390,12 @@ def test_bale_identifier_is_persisted_without_tokens_or_fabricated_url(monkeypat
 
     assert response.status_code == status.HTTP_201_CREATED
     assert response.json()["payment_url"] is None
+    assert response.json()["payment_identifier"] == "invoice-123"
     assert "gateway_reference" not in response.json()
+    assert "gateway" not in response.json()
+    assert "idempotency_key" not in response.json()
+    assert "provider_transaction_id" not in response.json()
+    assert "pre_checkout_transaction_id" not in response.json()
     attempt = PaymentAttempt.objects.get(pk=response.json()["id"])
     assert attempt.gateway == "bale"
     assert attempt.gateway_reference == "invoice-123"
@@ -441,14 +446,20 @@ def test_bale_timeout_retry_reuses_durable_attempt_and_payload(monkeypatch):
     first = api_client.post(url, {}, format="json")
     pending = PaymentAttempt.objects.get(order=order)
     second = api_client.post(url, {}, format="json")
+    third = api_client.post(url, {}, format="json")
 
     assert first.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert second.status_code == status.HTTP_200_OK
+    assert third.status_code == status.HTTP_200_OK
     assert second.json()["id"] == pending.pk
+    assert third.json()["id"] == pending.pk
+    assert second.json()["payment_identifier"] == "invoice-after-timeout"
+    assert third.json()["payment_identifier"] == "invoice-after-timeout"
     assert PaymentAttempt.objects.filter(order=order).count() == 1
     assert (
         session.calls[0][1]["json"]["payload"] == session.calls[1][1]["json"]["payload"]
     )
+    assert len(session.calls) == 2
     pending.refresh_from_db()
     assert pending.gateway_reference == "invoice-after-timeout"
 

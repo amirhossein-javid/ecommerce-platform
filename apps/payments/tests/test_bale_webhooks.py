@@ -977,10 +977,18 @@ def test_concurrent_same_transaction_id_cannot_bind_two_attempts(monkeypatch):
 
 
 @pytest.mark.django_db
-@override_settings(
-    BALE_WEBHOOK_URL="https://shop.example/api/v1/payments/bale/webhook/"
+@pytest.mark.parametrize(
+    "configured_url",
+    [
+        "https://payments.example-shop.com/api/v1/payments/bale/webhook/",
+        "https://payments.example-shop.com:443/api/v1/payments/bale/webhook/",
+        "https://payments.example-shop.com:88/api/v1/payments/bale/webhook/",
+    ],
 )
-def test_set_bale_webhook_command_uses_configured_https_url(monkeypatch):
+def test_set_bale_webhook_command_accepts_public_https_supported_ports(
+    monkeypatch,
+    configured_url,
+):
     calls = []
     monkeypatch.setattr(
         "apps.payments.management.commands.set_bale_webhook.BaleGateway.set_webhook",
@@ -988,9 +996,10 @@ def test_set_bale_webhook_command_uses_configured_https_url(monkeypatch):
     )
     stdout = StringIO()
 
-    call_command("set_bale_webhook", stdout=stdout)
+    with override_settings(BALE_WEBHOOK_URL=configured_url):
+        call_command("set_bale_webhook", stdout=stdout)
 
-    assert calls == ["https://shop.example/api/v1/payments/bale/webhook/"]
+    assert calls == [configured_url]
     assert "Bale webhook registered." in stdout.getvalue()
 
 
@@ -999,19 +1008,30 @@ def test_set_bale_webhook_command_uses_configured_https_url(monkeypatch):
     "configured_url",
     [
         "",
-        "http://shop.example/api/v1/payments/bale/webhook/",
-        "https://user:password@shop.example/webhook/",
-        "https://shop.example/webhook/#fragment",
+        "http://payments.example-shop.com/api/v1/payments/bale/webhook/",
+        "https://user:password@payments.example-shop.com/api/v1/payments/bale/webhook/",
+        "https://payments.example-shop.com/api/v1/payments/bale/webhook/#fragment",
+        "https://payments.example-shop.com:8443/api/v1/payments/bale/webhook/",
+        "https://payments.example-shop.com:not-a-port/api/v1/payments/bale/webhook/",
+        "https://localhost/api/v1/payments/bale/webhook/",
+        "https://127.0.0.1/api/v1/payments/bale/webhook/",
+        "https://[::1]/api/v1/payments/bale/webhook/",
+        "https://example.com/api/v1/payments/bale/webhook/",
+        "https://shop.example.net/api/v1/payments/bale/webhook/",
+        "https://payments.example-shop.com/api/v1/payments/bale/webhook",
+        "https://payments.example-shop.com/wrong-webhook/",
     ],
 )
 def test_set_bale_webhook_command_rejects_invalid_configuration(configured_url):
     with override_settings(BALE_WEBHOOK_URL=configured_url):
-        with pytest.raises(CommandError, match="valid HTTPS URL"):
+        with pytest.raises(CommandError, match="public HTTPS Bale webhook URL"):
             call_command("set_bale_webhook")
 
 
 @pytest.mark.django_db
-@override_settings(BALE_WEBHOOK_URL="https://shop.example/webhook/")
+@override_settings(
+    BALE_WEBHOOK_URL=("https://payments.example-shop.com/api/v1/payments/bale/webhook/")
+)
 def test_set_bale_webhook_command_sanitizes_gateway_errors(monkeypatch):
     secret = "bot token and provider response"
 

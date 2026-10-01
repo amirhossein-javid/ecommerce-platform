@@ -238,7 +238,7 @@ def test_only_pending_payment_orders_can_be_initiated(
 
 
 @pytest.mark.django_db
-def test_initiation_uses_authoritative_total_and_does_not_expose_gateway_reference(
+def test_non_bale_initiation_does_not_expose_internal_gateway_reference(
     api_client,
     payable_order,
     gateway,
@@ -266,8 +266,12 @@ def test_initiation_uses_authoritative_total_and_does_not_expose_gateway_referen
     assert key == attempt.idempotency_key
     assert response.json()["amount"] == "25"
     assert response.json()["currency"] == "IRR"
+    assert response.json()["payment_identifier"] is None
     assert "gateway" not in response.json()
     assert "gateway_reference" not in response.json()
+    assert "idempotency_key" not in response.json()
+    assert "provider_transaction_id" not in response.json()
+    assert "pre_checkout_transaction_id" not in response.json()
 
 
 @pytest.mark.django_db
@@ -286,6 +290,8 @@ def test_duplicate_initiation_returns_existing_pending_attempt(
     assert second.status_code == status.HTTP_200_OK
     assert first.json()["id"] == second.json()["id"]
     assert first.json()["payment_url"] == second.json()["payment_url"]
+    assert first.json()["payment_identifier"] is None
+    assert second.json()["payment_identifier"] is None
     assert second.json()["payment_url"] is not None
     assert PaymentAttempt.objects.filter(order=order).count() == 1
     assert len(gateway.initiations) == 1
@@ -498,6 +504,12 @@ def test_successful_verification_finalizes_order_and_stock_once(
     assert second.status_code == status.HTTP_200_OK
     assert first.json()["status"] == PaymentAttempt.Status.SUCCESS
     assert second.json()["status"] == PaymentAttempt.Status.SUCCESS
+    assert first.json()["payment_identifier"] is None
+    assert second.json()["payment_identifier"] is None
+    assert "gateway_reference" not in first.json()
+    assert "idempotency_key" not in first.json()
+    assert "provider_transaction_id" not in first.json()
+    assert "pre_checkout_transaction_id" not in first.json()
     order.refresh_from_db()
     product.refresh_from_db()
     reservation.refresh_from_db()

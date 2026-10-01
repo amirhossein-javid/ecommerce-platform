@@ -1,3 +1,8 @@
+from django.conf import settings
+from django.http import Http404
+from django.utils.decorators import method_decorator
+from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.generic import TemplateView
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ParseError
@@ -37,6 +42,16 @@ PAYMENT_GATEWAY_UNAVAILABLE_MESSAGE = "Payment gateway is temporarily unavailabl
 BALE_WEBHOOK_INVALID_MESSAGE = "Invalid Bale payment update."
 
 
+@method_decorator(xframe_options_exempt, name="dispatch")
+class BaleSmokeTestView(TemplateView):
+    template_name = "payments/bale_smoke_test.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not settings.DEBUG:
+            raise Http404
+        return super().dispatch(request, *args, **kwargs)
+
+
 class CustomerPaymentMixin:
     permission_classes = (IsAuthenticated,)
 
@@ -72,7 +87,8 @@ class PaymentInitiationView(CustomerPaymentMixin, APIView):
         description=(
             "Initiate payment for an owned pending-payment order. The amount and "
             "IRR currency are copied from the authoritative order. Repeated calls "
-            "return the existing pending attempt."
+            "return the existing pending attempt. payment_identifier is the opaque "
+            "client handoff value returned by the configured gateway."
         ),
         tags=["Payments"],
     )

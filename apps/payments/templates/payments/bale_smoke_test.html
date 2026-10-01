@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script src="https://tapi.bale.ai/miniapp.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bale payment smoke test</title>
+</head>
+<body>
+  <main>
+    <h1>Bale payment smoke test</h1>
+    <p>Paste the <code>payment_identifier</code> returned by the authenticated payment initiation API.</p>
+    <form id="invoice-form">
+      <label for="invoice-identifier">Invoice identifier</label>
+      <input id="invoice-identifier" name="invoice_identifier" required autocomplete="off">
+      <button type="submit">Open invoice</button>
+    </form>
+    <p id="payment-status" role="status" aria-live="polite">pending</p>
+    <p>This display is informational only. The server-side webhook and inquiry determine payment state.</p>
+  </main>
+  <script>
+    (() => {
+      const form = document.getElementById("invoice-form");
+      const input = document.getElementById("invoice-identifier");
+      const status = document.getElementById("payment-status");
+      const allowedStatuses = new Set(["paid", "cancelled", "failed", "pending"]);
+
+      if (window.Bale && Bale.WebApp) {
+        Bale.WebApp.ready();
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const invoiceIdentifier = input.value;
+        status.textContent = "pending";
+
+        if (!window.Bale || !Bale.WebApp || !Bale.WebApp.openInvoice) {
+          status.textContent = "failed";
+          return;
+        }
+
+        Bale.WebApp.openInvoice(invoiceIdentifier, (result) => {
+          status.textContent = allowedStatuses.has(result?.status)
+            ? result.status
+            : "failed";
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -14,6 +14,12 @@ class PaymentAttemptSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     payment_url = serializers.URLField(read_only=True, allow_null=True)
+    payment_identifier = serializers.CharField(
+        source="customer_payment_identifier",
+        max_length=255,
+        read_only=True,
+        allow_null=True,
+    )
 
     class Meta:
         model = PaymentAttempt
@@ -23,6 +29,7 @@ class PaymentAttemptSerializer(serializers.ModelSerializer):
             "amount",
             "currency",
             "payment_url",
+            "payment_identifier",
             "created_at",
             "updated_at",
         )
