@@ -4,9 +4,9 @@ Production-oriented REST API built with Python 3.12, Django 5.2, Django REST
 Framework, PostgreSQL, and Docker.
 
 The repository is organized as a monorepo. The Django application and its
-Python tooling live in `backend/`; repository-level Compose, environment, and
-documentation files remain at the root. The future frontend will be added under
-`frontend/` when its implementation begins.
+Python tooling live in `backend/`, and the Next.js application lives in
+`frontend/`; repository-level Compose, environment, and documentation files
+remain at the root.
 
 The executable Next.js integration boundary is documented in
 [`FRONTEND_HANDOFF.md`](FRONTEND_HANDOFF.md).
@@ -20,7 +20,13 @@ The executable Next.js integration boundary is documented in
    docker compose up --build
    ```
 
-The API is available at `http://localhost:8000`. Useful endpoints:
+Docker Compose runs the complete local stack without requiring Python, Node.js,
+or npm on the host:
+
+- Frontend: `http://localhost:3000`
+- API: `http://localhost:8000`
+
+Useful backend endpoints:
 
 - Health check: `GET /api/v1/health/`
 - OpenAPI schema: `GET /api/schema/`
@@ -29,6 +35,11 @@ The API is available at `http://localhost:8000`. Useful endpoints:
 Development Compose intentionally applies migrations before starting Django's
 development server. This behavior is confined to `compose.yaml`; the production
 image never runs migrations as part of web startup.
+
+The frontend source is bind-mounted for development reloads. Its Linux
+`node_modules` and `.next` cache live in Docker named volumes so they are not
+mixed with host artifacts. Inside Compose, the server-only `DJANGO_API_URL`
+defaults to `http://web:8000`, where `web` is the Django service name.
 
 ## Quality checks
 
@@ -39,6 +50,13 @@ docker compose run --rm web pytest
 docker compose run --rm web ruff check .
 docker compose run --rm web ruff format --check .
 docker compose run --rm web python manage.py check
+```
+
+Run frontend checks in its container:
+
+```bash
+docker compose run --rm --no-deps frontend npm run lint
+docker compose run --rm --no-deps frontend npm run typecheck
 ```
 
 ## Production settings and security
