@@ -39,7 +39,10 @@ image never runs migrations as part of web startup.
 The frontend source is bind-mounted for development reloads. Its Linux
 `node_modules` and `.next` cache live in Docker named volumes so they are not
 mixed with host artifacts. Inside Compose, the server-only `DJANGO_API_URL`
-defaults to `http://web:8000`, where `web` is the Django service name.
+defaults to `http://web:8000`, where `web` is the Django service name. Compose
+uses Next.js development with Webpack and a one-second file-watch poll so edits
+are detected reliably through Docker Desktop bind mounts. Production builds and
+direct host development keep the Next.js defaults.
 
 ## Quality checks
 

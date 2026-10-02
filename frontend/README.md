@@ -13,7 +13,9 @@ docker compose up --build
 
 رابط کاربری در `http://localhost:3000` در دسترس است. سورس `frontend/` برای
 reload توسعه‌ای bind mount می‌شود، اما `node_modules` و `.next` در volumeهای
-نام‌دار Docker نگهداری می‌شوند.
+نام‌دار Docker نگهداری می‌شوند. Compose برای تشخیص مطمئن تغییر فایل‌ها روی
+Docker Desktop، dev server را با Webpack و polling یک‌ثانیه‌ای اجرا می‌کند؛
+production build همچنان از تنظیم پیش‌فرض Next.js استفاده می‌کند.
 
 Compose متغیر فقط-سرور `DJANGO_API_URL` را به `http://web:8000` تنظیم می‌کند؛
 `web` نام سرویس Django در شبکهٔ Compose است. این مقدار نباید با پیشوند
