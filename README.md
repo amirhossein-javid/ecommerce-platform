@@ -47,6 +47,9 @@ are missing or retain known development/placeholder values.
 
 Required production configuration:
 
+- `DJANGO_SETTINGS_MODULE=config.settings.production`: set this explicitly for
+  web replicas, release commands, and scheduled jobs, even though the image has
+  the same default.
 - `DJANGO_SECRET_KEY`: a random value of at least 50 characters. It must not be
   a Django-generated or documented placeholder.
 - `DJANGO_JWT_SIGNING_KEY`: a separate random value of at least 50 characters.
@@ -81,6 +84,27 @@ Set `DJANGO_TRUST_X_FORWARDED_PROTO=True` only when Django runs behind a trusted
 reverse proxy that strips any client-supplied `X-Forwarded-Proto` header and
 sets it from the actual connection. Leave it disabled when that assumption does
 not hold. No proxy vendor or network topology is assumed by the application.
+
+### TLS and reverse-proxy boundary
+
+The production image runs Gunicorn over plain HTTP inside the container; it does
+not terminate public TLS. The deployment ingress or reverse proxy must provide
+the public HTTPS endpoint and must not expose Gunicorn directly to untrusted
+public traffic. Because Django enforces `SECURE_SSL_REDIRECT`, a proxy that
+terminates TLS and forwards HTTP to the container must provide a trustworthy
+secure-scheme signal. For the supported header-based path, it must discard any
+client-supplied `X-Forwarded-Proto`, set that header itself, and the application
+must set `DJANGO_TRUST_X_FORWARDED_PROTO=True`. Enabling that setting without
+this sanitizing trust boundary permits clients to forge whether a request was
+secure; omitting it behind an HTTP upstream causes redirect loops for normal
+HTTPS requests.
+
+`DJANGO_ALLOWED_HOSTS` contains request hostnames, without schemes or paths.
+`DJANGO_CORS_ALLOWED_ORIGINS` contains HTTPS browser origins allowed to read the
+API, while `DJANGO_CSRF_TRUSTED_ORIGINS` is only for origins trusted to submit
+CSRF-protected unsafe requests. These lists are separate and must be populated
+from the actual public domains; a frontend origin does not automatically belong
+in the CSRF list.
 
 ### Application request throttling
 
@@ -154,7 +178,8 @@ expire. Run its built-in cleanup command once per day against the production
 database:
 
 ```bash
-python manage.py flushexpiredtokens
+docker run --rm --env-file /secure/path/production.env \
+  ecommerce-api python manage.py flushexpiredtokens
 ```
 
 This is a periodic production maintenance operation, not a web-startup step.
@@ -164,6 +189,33 @@ configuration as the web service. Exactly one scheduled runner should execute
 each daily run; do not start it independently in every web replica. Scheduling
 and failure alerting remain deployment responsibilities, so this repository
 does not add Celery, cron configuration, or provider-specific infrastructure.
+
+### Bale production operations
+
+When Bale is the selected payment gateway, production must provide
+`PAYMENT_GATEWAY_CLASS=apps.payments.bale.BaleGateway`, the secret
+`BALE_BOT_TOKEN`, the production provider token, and the exact public HTTPS
+`BALE_WEBHOOK_URL`. After the public route is reachable, register it as an
+explicit one-off operation from the deployed image; rerun the command whenever
+that URL changes:
+
+```bash
+docker run --rm --env-file /secure/path/production.env \
+  ecommerce-api python manage.py set_bale_webhook
+```
+
+Webhook registration is never an image-build or web-startup action. If locally
+durable Bale updates remain recoverable after an interruption, an operator can
+run the existing idempotent recovery path on demand:
+
+```bash
+docker run --rm --env-file /secure/path/production.env \
+  ecommerce-api python manage.py recover_bale_payments
+```
+
+Both commands require the same production settings, database, and Bale
+credentials as the web service. Scheduling provider recovery speculatively is
+not part of the current contract.
 
 ### Gunicorn and database runtime settings
 
@@ -183,6 +235,19 @@ does not add Celery, cron configuration, or provider-specific infrastructure.
 
 No database pool size or Gunicorn worker formula is imposed because both depend
 on the eventual database connection limit and container resources.
+`DATABASE_URL` must provide a reachable PostgreSQL endpoint, production
+credentials, database name, and any TLS/CA options required by that endpoint.
+The deployment must budget PostgreSQL connections for every Gunicorn worker and
+replica before increasing `WEB_CONCURRENCY` or replica count.
+
+### Logging
+
+Django application logs and Gunicorn access/error logs are written to process
+stdout/stderr. The deployment platform must collect them, apply appropriate
+retention and access controls, and alert on actionable failures. Logs must not
+be treated as the authoritative order/payment audit record, and operators must
+not add credentials, payment URLs, raw webhook payloads, provider transaction
+identifiers, or customer PII to log enrichment.
 
 ### Static and uploaded media
 
@@ -197,6 +262,17 @@ storage across replicas. Before accepting durable production uploads, the
 deployment must provide persistent shared media storage or the project must be
 configured with an appropriate external storage backend. No storage provider is
 selected here.
+
+### Backup and restore
+
+Database backup scheduling, encryption, retention, access control, and tested
+restoration are deployment responsibilities. Backups must cover the production
+PostgreSQL database; immutable static assets are rebuilt from the image and do
+not require backup. If production accepts uploaded media, its selected durable
+storage must have a compatible backup/versioning and restore plan. Operators
+must periodically test restoration in an isolated environment rather than
+assuming a successful backup job is recoverable. This repository intentionally
+does not prescribe a database or storage provider's backup mechanism.
 
 ### Health probes
 
@@ -214,7 +290,9 @@ other third party. The exact liveness path is the only production endpoint
 exempt from HTTP-to-HTTPS redirection so the container-internal probe does not
 depend on reverse-proxy trust configuration; readiness and all normal endpoints
 retain HTTPS enforcement. Configure the probe host consistently with
-`DJANGO_ALLOWED_HOSTS`.
+`DJANGO_ALLOWED_HOSTS`; invoke readiness through public HTTPS or the same trusted
+forwarded-protocol path as normal traffic. A liveness success must not be used
+to send traffic when readiness is failing.
 
 ## Manual Bale test-payment smoke test
 
