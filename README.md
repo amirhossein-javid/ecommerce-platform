@@ -8,6 +8,9 @@ Python tooling live in `backend/`; repository-level Compose, environment, and
 documentation files remain at the root. The future frontend will be added under
 `frontend/` when its implementation begins.
 
+The executable Next.js integration boundary is documented in
+[`FRONTEND_HANDOFF.md`](FRONTEND_HANDOFF.md).
+
 ## Local setup with Docker
 
 1. Copy `.env.example` to `.env` and replace the development secret.
