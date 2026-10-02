@@ -21,6 +21,11 @@ Compose متغیر فقط-سرور `DJANGO_API_URL` را به `http://web:8000` 
 `web` نام سرویس Django در شبکهٔ Compose است. این مقدار نباید با پیشوند
 `NEXT_PUBLIC_` در اختیار مرورگر قرار گیرد.
 
+برای رسانه‌ای که در توسعه روی Django نگهداری می‌شود، Compose متغیر فقط‌سرور
+`DJANGO_PUBLIC_MEDIA_URL` را به `http://localhost:8000/media/` تنظیم می‌کند تا
+URL ساخته‌شده با hostname داخلی `web` پیش از رندر برای مرورگر محلی نگاشت شود.
+URL رسانه‌های storage خارجی بدون تغییر باقی می‌ماند.
+
 ## اجرای مستقل اختیاری
 
 برای اجرای frontend خارج از Docker به Node.js 24 LTS و npm نیاز است:

@@ -25,6 +25,7 @@ or npm on the host:
 
 - Frontend: `http://localhost:3000`
 - API: `http://localhost:8000`
+- Uploaded media: `http://localhost:8000/media/` (development only)
 
 Useful backend endpoints:
 

@@ -73,8 +73,63 @@ function isProductPage(value: unknown): value is ProductPage {
   );
 }
 
+function withPublicMediaUrls(page: ProductPage, apiOrigin: URL): ProductPage {
+  const publicMediaValue = process.env.DJANGO_PUBLIC_MEDIA_URL;
+
+  if (!publicMediaValue) {
+    return page;
+  }
+
+  let publicMediaUrl: URL;
+
+  try {
+    publicMediaUrl = new URL(publicMediaValue);
+  } catch {
+    return page;
+  }
+
+  return {
+    ...page,
+    results: page.results.map((product) => {
+      const primaryImage = product.primary_image;
+
+      if (!primaryImage) {
+        return product;
+      }
+
+      try {
+        const imageUrl = new URL(primaryImage.image);
+
+        if (
+          imageUrl.origin !== apiOrigin.origin ||
+          !imageUrl.pathname.startsWith(publicMediaUrl.pathname)
+        ) {
+          return product;
+        }
+
+        const publicImageUrl = new URL(
+          imageUrl.pathname.slice(publicMediaUrl.pathname.length),
+          publicMediaUrl,
+        );
+        publicImageUrl.search = imageUrl.search;
+
+        return {
+          ...product,
+          primary_image: {
+            ...primaryImage,
+            image: publicImageUrl.toString(),
+          },
+        };
+      } catch {
+        return product;
+      }
+    }),
+  };
+}
+
 export async function getProducts(page: number): Promise<ProductPage> {
-  const url = new URL(PRODUCTS_PATH, getApiOrigin());
+  const apiOrigin = getApiOrigin();
+  const url = new URL(PRODUCTS_PATH, apiOrigin);
   url.searchParams.set("page", page.toString());
   url.searchParams.set("page_size", PRODUCTS_PAGE_SIZE.toString());
 
@@ -99,5 +154,5 @@ export async function getProducts(page: number): Promise<ProductPage> {
     throw new CatalogApiError();
   }
 
-  return data;
+  return withPublicMediaUrls(data, apiOrigin);
 }
