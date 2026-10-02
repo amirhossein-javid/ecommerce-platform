@@ -1,0 +1,1189 @@
+import logging
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from datetime import timedelta
+from decimal import Decimal
+from threading import Barrier, Event, Lock
+from time import sleep
+from uuid import uuid4
+
+import pytest
+from django.conf import settings
+from django.db import close_old_connections, transaction
+from django.test import override_settings
+from django.urls import reverse
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from apps.accounts.models import CustomerProfile, User
+from apps.orders.lifecycle import cancel_order
+from apps.orders.models import InventoryReservation, Order, OrderStatusHistory
+from apps.orders.services import RESERVATION_LIFETIME
+from apps.payments import services as payment_services
+from apps.payments.gateways import (
+    PaymentGatewayUnavailable,
+    PaymentInitiation,
+    PaymentVerification,
+    VerificationStatus,
+)
+from apps.payments.models import PaymentAttempt
+from apps.payments.services import (
+    OrderNotPayable,
+    PaymentVerificationInvalid,
+    PaymentWindowExpired,
+    initiate_order_payment,
+    verify_order_payment,
+)
+from apps.products.models import Category, Product
+
+ONE_PAYMENT_REQUEST_PER_MINUTE = {
+    **settings.REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {
+        **settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+        "payment_initiate": "1/minute",
+        "payment_verify": "1/minute",
+    },
+}
+
+
+class FakeGateway:
+    name = "fake"
+
+    def __init__(
+        self,
+        verification_status=VerificationStatus.SUCCESS,
+        initiation_barrier=None,
+        verification_event=None,
+    ):
+        self.verification_status = verification_status
+        self.initiation_barrier = initiation_barrier
+        self.verification_event = verification_event
+        self.initiations = []
+        self.verifications = []
+        self._lock = Lock()
+
+    def initiate(self, *, order_id, amount, currency, idempotency_key):
+        reference = f"fake-{idempotency_key}"
+        with self._lock:
+            self.initiations.append((order_id, amount, currency, idempotency_key))
+        if self.initiation_barrier is not None:
+            self.initiation_barrier.wait(timeout=10)
+        return PaymentInitiation(
+            gateway_reference=reference,
+            payment_url=f"https://payments.example/{reference}",
+        )
+
+    def verify(self, *, gateway_reference, callback_data):
+        with self._lock:
+            self.verifications.append((gateway_reference, callback_data))
+        if self.verification_event is not None:
+            self.verification_event.set()
+        return PaymentVerification(
+            status=self.verification_status,
+            gateway_reference=gateway_reference,
+            amount=Decimal("25.00"),
+            currency="IRR",
+        )
+
+
+class AmbiguousOnceGateway(FakeGateway):
+    def initiate(self, *, order_id, amount, currency, idempotency_key):
+        reference = f"fake-{idempotency_key}"
+        with self._lock:
+            self.initiations.append((order_id, amount, currency, idempotency_key))
+            call_count = len(self.initiations)
+        if call_count == 1:
+            raise PaymentGatewayUnavailable("Ambiguous gateway timeout.")
+        return PaymentInitiation(
+            gateway_reference=reference,
+            payment_url=f"https://payments.example/{reference}",
+        )
+
+
+class BlockingInitiationGateway(FakeGateway):
+    def __init__(self):
+        super().__init__()
+        self.started = Event()
+        self.release = Event()
+
+    def initiate(self, *, order_id, amount, currency, idempotency_key):
+        self.started.set()
+        if not self.release.wait(timeout=10):
+            raise TimeoutError("The test did not release payment initiation.")
+        return super().initiate(
+            order_id=order_id,
+            amount=amount,
+            currency=currency,
+            idempotency_key=idempotency_key,
+        )
+
+
+class SensitiveFailureGateway(FakeGateway):
+    def __init__(self, sensitive_value):
+        super().__init__()
+        self.sensitive_value = sensitive_value
+
+    def initiate(self, **kwargs):
+        raise PaymentGatewayUnavailable(self.sensitive_value)
+
+
+@pytest.fixture
+def api_client():
+    return APIClient()
+
+
+@pytest.fixture
+def gateway(monkeypatch):
+    gateway = FakeGateway()
+    monkeypatch.setattr(
+        "apps.payments.services.get_payment_gateway",
+        lambda: gateway,
+    )
+    return gateway
+
+
+@pytest.fixture
+def customer(db):
+    return create_customer("payment-customer@example.com")
+
+
+@pytest.fixture
+def payable_order(customer):
+    category = Category.objects.create(name=f"Payment category {uuid4()}")
+    product = Product.objects.create(
+        category=category,
+        name="Payable product",
+        slug=f"payable-{uuid4()}",
+        sku=f"PAY-{uuid4()}",
+        price=Decimal("12.00"),
+        stock_quantity=10,
+        status=Product.Status.ACTIVE,
+    )
+    order = create_order(customer)
+    reservation = InventoryReservation.objects.create(
+        order=order,
+        product=product,
+        quantity=2,
+        expires_at=timezone.now() + RESERVATION_LIFETIME,
+    )
+    return order, product, reservation
+
+
+def create_customer(email):
+    user = User.objects.create_user(email, password="StrongPassword123!")
+    return CustomerProfile.objects.create(user=user)
+
+
+def create_order(customer, *, status_value=Order.Status.PENDING_PAYMENT):
+    return Order.objects.create(
+        customer=customer,
+        status=status_value,
+        subtotal=Decimal("25.00"),
+        discount_total=Decimal("0.00"),
+        shipping_total=Decimal("0.00"),
+        grand_total=Decimal("25.00"),
+        shipping_title="Home",
+        shipping_recipient_first_name="Ali",
+        shipping_recipient_last_name="Ahmadi",
+        shipping_recipient_phone_number="+989121234567",
+        shipping_province="Tehran",
+        shipping_city="Tehran",
+        shipping_address="Historical address",
+        shipping_postal_code="1234567890",
+    )
+
+
+def initiate_url(order):
+    return reverse("payments:payment-initiate", kwargs={"order_id": order.pk})
+
+
+def verify_url(attempt):
+    return reverse(
+        "payments:payment-verify",
+        kwargs={"order_id": attempt.order_id, "payment_id": attempt.pk},
+    )
+
+
+def expire_reservation(reservation):
+    now = timezone.now()
+    InventoryReservation.objects.filter(pk=reservation.pk).update(
+        created_at=now - RESERVATION_LIFETIME,
+        expires_at=now - timedelta(seconds=1),
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_payment_logs_safe_committed_context_without_duplicate_success(
+    payable_order,
+    caplog,
+):
+    order, _, _ = payable_order
+    gateway = FakeGateway()
+    caplog.set_level(logging.INFO, logger="apps.payments.services")
+
+    attempt, payment_url, _ = initiate_order_payment(order=order, gateway=gateway)
+    first = verify_order_payment(
+        attempt=attempt,
+        callback_data={"sensitive_callback": "private-callback-value"},
+        gateway=gateway,
+    )
+    second = verify_order_payment(
+        attempt=first,
+        callback_data={"sensitive_callback": "duplicate-private-value"},
+        gateway=gateway,
+    )
+
+    assert first.status == PaymentAttempt.Status.SUCCESS
+    assert second.status == PaymentAttempt.Status.SUCCESS
+    assert caplog.text.count("payment_initiation_committed") == 1
+    assert caplog.text.count("payment_finalization_committed") == 1
+    assert f"order_id={order.pk}" in caplog.text
+    assert f"payment_attempt_id={attempt.pk}" in caplog.text
+    assert "outcome=success" in caplog.text
+    sensitive_values = (
+        str(attempt.idempotency_key),
+        attempt.gateway_reference,
+        payment_url,
+        "private-callback-value",
+        "duplicate-private-value",
+        order.customer.user.email,
+        order.shipping_recipient_phone_number,
+    )
+    assert all(value not in caplog.text for value in sensitive_values)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_payment_gateway_failure_logging_is_sanitized_and_preserves_exception(
+    payable_order,
+    caplog,
+):
+    order, _, _ = payable_order
+    secret = "https://gateway.example/private?token=do-not-log"
+    gateway = SensitiveFailureGateway(secret)
+    caplog.set_level(logging.WARNING, logger="apps.payments.services")
+
+    with pytest.raises(PaymentGatewayUnavailable, match="do-not-log"):
+        initiate_order_payment(order=order, gateway=gateway)
+
+    attempt = PaymentAttempt.objects.get(order=order)
+    assert "payment_initiation_gateway_failed" in caplog.text
+    assert f"order_id={order.pk}" in caplog.text
+    assert f"payment_attempt_id={attempt.pk}" in caplog.text
+    assert "failure_category=PaymentGatewayUnavailable" in caplog.text
+    assert secret not in caplog.text
+    assert str(attempt.idempotency_key) not in caplog.text
+
+
+@pytest.mark.django_db
+def test_payment_initiation_requires_authentication(api_client, payable_order):
+    order, _, _ = payable_order
+
+    response = api_client.post(initiate_url(order), {}, format="json")
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_only_owner_can_initiate_without_order_disclosure(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, _, _ = payable_order
+    other = create_customer("other-payment@example.com")
+    api_client.force_authenticate(user=other.user)
+
+    cross_customer = api_client.post(initiate_url(order), {}, format="json")
+    unknown = api_client.post(
+        reverse("payments:payment-initiate", kwargs={"order_id": order.pk + 99999}),
+        {},
+        format="json",
+    )
+
+    assert cross_customer.status_code == status.HTTP_404_NOT_FOUND
+    assert cross_customer.json() == unknown.json()
+    assert gateway.initiations == []
+
+
+@pytest.mark.django_db
+def test_user_without_customer_profile_fails_safely(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, _, _ = payable_order
+    user = User.objects.create_user("staff-payment@example.com")
+    api_client.force_authenticate(user=user)
+
+    response = api_client.post(initiate_url(order), {}, format="json")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json() == {"detail": "Customer profile not found."}
+    assert gateway.initiations == []
+
+
+@pytest.mark.django_db
+def test_only_pending_payment_orders_can_be_initiated(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, _, _ = payable_order
+    order.status = Order.Status.PAID
+    order.save(update_fields=("status", "updated_at"))
+    api_client.force_authenticate(user=order.customer.user)
+
+    response = api_client.post(initiate_url(order), {}, format="json")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert PaymentAttempt.objects.filter(order=order).exists() is False
+    assert gateway.initiations == []
+
+
+@pytest.mark.django_db
+def test_non_bale_initiation_does_not_expose_internal_gateway_reference(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, _, _ = payable_order
+    api_client.force_authenticate(user=order.customer.user)
+
+    response = api_client.post(
+        initiate_url(order),
+        {"amount": "0.01", "currency": "EUR"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    attempt = PaymentAttempt.objects.get(pk=response.json()["id"])
+    assert attempt.amount == order.grand_total == Decimal("25.00")
+    assert attempt.currency == "IRR"
+    assert len(gateway.initiations) == 1
+    initiated_order, initiated_amount, initiated_currency, key = gateway.initiations[0]
+    assert (initiated_order, initiated_amount, initiated_currency) == (
+        order.pk,
+        Decimal("25.00"),
+        "IRR",
+    )
+    assert key == attempt.idempotency_key
+    assert response.json()["amount"] == "25"
+    assert response.json()["currency"] == "IRR"
+    assert response.json()["payment_identifier"] is None
+    assert "gateway" not in response.json()
+    assert "gateway_reference" not in response.json()
+    assert "idempotency_key" not in response.json()
+    assert "provider_transaction_id" not in response.json()
+    assert "pre_checkout_transaction_id" not in response.json()
+
+
+@pytest.mark.django_db
+def test_duplicate_initiation_returns_existing_pending_attempt(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, _, _ = payable_order
+    api_client.force_authenticate(user=order.customer.user)
+
+    first = api_client.post(initiate_url(order), {}, format="json")
+    second = api_client.post(initiate_url(order), {}, format="json")
+
+    assert first.status_code == status.HTTP_201_CREATED
+    assert second.status_code == status.HTTP_200_OK
+    assert first.json()["id"] == second.json()["id"]
+    assert first.json()["payment_url"] == second.json()["payment_url"]
+    assert first.json()["payment_identifier"] is None
+    assert second.json()["payment_identifier"] is None
+    assert second.json()["payment_url"] is not None
+    assert PaymentAttempt.objects.filter(order=order).count() == 1
+    assert len(gateway.initiations) == 1
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_PAYMENT_REQUEST_PER_MINUTE)
+def test_payment_initiation_throttle_prevents_attempt_and_gateway_call(
+    api_client,
+    payable_order,
+    gateway,
+    configure_throttle_rates,
+):
+    configure_throttle_rates(payment_initiate="1/minute")
+    order, _, _ = payable_order
+    api_client.force_authenticate(user=order.customer.user)
+
+    first_response = api_client.post(initiate_url(order), {}, format="json")
+    PaymentAttempt.objects.filter(order=order).update(
+        status=PaymentAttempt.Status.FAILED
+    )
+    blocked_response = api_client.post(initiate_url(order), {}, format="json")
+
+    assert first_response.status_code == status.HTTP_201_CREATED
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert PaymentAttempt.objects.filter(order=order).count() == 1
+    assert len(gateway.initiations) == 1
+
+
+@pytest.mark.django_db
+def test_ambiguous_gateway_timeout_retries_same_durable_idempotency_key(
+    payable_order,
+):
+    order, _, _ = payable_order
+    gateway = AmbiguousOnceGateway()
+
+    with pytest.raises(PaymentGatewayUnavailable, match="Ambiguous"):
+        initiate_order_payment(order=order, gateway=gateway)
+
+    pending = PaymentAttempt.objects.get(order=order)
+    assert pending.status == PaymentAttempt.Status.PENDING
+    assert pending.gateway_reference is None
+    first_key = pending.idempotency_key
+
+    retried, payment_url, created = initiate_order_payment(
+        order=order,
+        gateway=gateway,
+    )
+
+    assert created is False
+    assert retried.pk == pending.pk
+    assert retried.idempotency_key == first_key
+    assert payment_url == f"https://payments.example/fake-{first_key}"
+    assert [call[3] for call in gateway.initiations] == [first_key, first_key]
+    assert PaymentAttempt.objects.filter(order=order).count() == 1
+
+
+@pytest.mark.django_db
+def test_initiation_does_not_expose_payment_gateway_error_details(
+    api_client,
+    payable_order,
+    gateway,
+    monkeypatch,
+):
+    order, _, _ = payable_order
+    sensitive_detail = (
+        "merchant_secret=top-secret; gateway_reference=internal-reference; "
+        "upstream_body=private-response"
+    )
+
+    def raise_gateway_error(**kwargs):
+        raise PaymentGatewayUnavailable(sensitive_detail)
+
+    monkeypatch.setattr(gateway, "initiate", raise_gateway_error)
+    api_client.force_authenticate(user=order.customer.user)
+
+    response = api_client.post(initiate_url(order), {}, format="json")
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json() == {"detail": "Payment gateway is temporarily unavailable."}
+    assert sensitive_detail not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_only_owner_can_verify_without_payment_disclosure(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, _, _ = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    other = create_customer("other-verifier@example.com")
+    api_client.force_authenticate(user=other.user)
+
+    cross_customer = api_client.post(
+        verify_url(attempt),
+        {"callback_data": {}},
+        format="json",
+    )
+    unknown = api_client.post(
+        reverse(
+            "payments:payment-verify",
+            kwargs={
+                "order_id": order.pk + 99999,
+                "payment_id": attempt.pk + 99999,
+            },
+        ),
+        {"callback_data": {}},
+        format="json",
+    )
+
+    assert cross_customer.status_code == status.HTTP_404_NOT_FOUND
+    assert cross_customer.json() == unknown.json()
+    assert gateway.verifications == []
+
+
+@pytest.mark.django_db
+def test_verification_does_not_expose_payment_gateway_error_details(
+    api_client,
+    payable_order,
+    gateway,
+    monkeypatch,
+):
+    order, _, _ = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    sensitive_detail = (
+        "network_error=connection-refused; merchant_id=private-merchant; "
+        "gateway_reference=internal-reference"
+    )
+
+    def raise_gateway_error(**kwargs):
+        raise PaymentGatewayUnavailable(sensitive_detail)
+
+    monkeypatch.setattr(gateway, "verify", raise_gateway_error)
+    api_client.force_authenticate(user=order.customer.user)
+
+    response = api_client.post(
+        verify_url(attempt),
+        {"callback_data": {"untrusted": "value"}},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json() == {"detail": "Payment gateway is temporarily unavailable."}
+    assert sensitive_detail not in response.content.decode()
+
+
+@pytest.mark.django_db
+@override_settings(REST_FRAMEWORK=ONE_PAYMENT_REQUEST_PER_MINUTE)
+def test_payment_verification_throttle_prevents_gateway_call(
+    api_client,
+    payable_order,
+    gateway,
+    monkeypatch,
+    configure_throttle_rates,
+):
+    configure_throttle_rates(payment_verify="1/minute")
+    order, _, _ = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    verification_calls = []
+
+    def unavailable_verification(**kwargs):
+        verification_calls.append(kwargs)
+        raise PaymentGatewayUnavailable("temporary failure")
+
+    monkeypatch.setattr(gateway, "verify", unavailable_verification)
+    api_client.force_authenticate(user=order.customer.user)
+
+    first_response = api_client.post(
+        verify_url(attempt),
+        {"callback_data": {}},
+        format="json",
+    )
+    blocked_response = api_client.post(
+        verify_url(attempt),
+        {"callback_data": {}},
+        format="json",
+    )
+
+    assert first_response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert len(verification_calls) == 1
+    attempt.refresh_from_db()
+    assert attempt.status == PaymentAttempt.Status.PENDING
+
+
+@pytest.mark.django_db
+def test_failed_verification_allows_retry_while_order_remains_payable(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, product, reservation = payable_order
+    api_client.force_authenticate(user=order.customer.user)
+    first_response = api_client.post(initiate_url(order), {}, format="json")
+    first = PaymentAttempt.objects.get(pk=first_response.json()["id"])
+    gateway.verification_status = VerificationStatus.FAILED
+
+    failed = api_client.post(
+        verify_url(first),
+        {"callback_data": {"untrusted": "value"}},
+        format="json",
+    )
+    retry = api_client.post(initiate_url(order), {}, format="json")
+
+    assert failed.status_code == status.HTTP_200_OK
+    assert failed.json()["status"] == PaymentAttempt.Status.FAILED
+    assert failed.json()["payment_url"] is None
+    assert failed.json()["payment_identifier"] is None
+    assert retry.status_code == status.HTTP_201_CREATED
+    assert retry.json()["id"] != first.pk
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    assert order.status == Order.Status.PENDING_PAYMENT
+    assert product.stock_quantity == 10
+    assert reservation.status == InventoryReservation.Status.ACTIVE
+
+
+@pytest.mark.django_db
+def test_expired_initiation_expires_order_releases_reservation_and_fails_pending(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, product, reservation = payable_order
+    pending = PaymentAttempt.objects.create(
+        order=order,
+        amount=order.grand_total,
+        currency="IRR",
+        gateway=gateway.name,
+        gateway_reference="existing-expired",
+        payment_url="https://payments.example/existing-expired",
+    )
+    expire_reservation(reservation)
+    api_client.force_authenticate(user=order.customer.user)
+
+    response = api_client.post(initiate_url(order), {}, format="json")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    order.refresh_from_db()
+    reservation.refresh_from_db()
+    pending.refresh_from_db()
+    product.refresh_from_db()
+    assert order.status == Order.Status.EXPIRED
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert pending.status == PaymentAttempt.Status.FAILED
+    assert product.stock_quantity == 10
+    assert gateway.initiations == []
+    history = OrderStatusHistory.objects.get(order=order)
+    assert history.from_status == Order.Status.PENDING_PAYMENT
+    assert history.to_status == Order.Status.EXPIRED
+    assert history.actor_type == OrderStatusHistory.ActorType.SYSTEM
+    assert history.actor_user is None
+
+
+@pytest.mark.django_db
+def test_successful_verification_finalizes_order_and_stock_once(
+    api_client,
+    payable_order,
+    gateway,
+):
+    order, product, reservation = payable_order
+    api_client.force_authenticate(user=order.customer.user)
+    initiated = api_client.post(initiate_url(order), {}, format="json")
+    attempt = PaymentAttempt.objects.get(pk=initiated.json()["id"])
+
+    first = api_client.post(
+        verify_url(attempt),
+        {"callback_data": {"opaque": "return-data"}},
+        format="json",
+    )
+    second = api_client.post(
+        verify_url(attempt),
+        {"callback_data": {"opaque": "duplicate"}},
+        format="json",
+    )
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    assert first.json()["status"] == PaymentAttempt.Status.SUCCESS
+    assert second.json()["status"] == PaymentAttempt.Status.SUCCESS
+    assert first.json()["payment_identifier"] is None
+    assert second.json()["payment_identifier"] is None
+    assert "gateway_reference" not in first.json()
+    assert "idempotency_key" not in first.json()
+    assert "provider_transaction_id" not in first.json()
+    assert "pre_checkout_transaction_id" not in first.json()
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    assert order.status == Order.Status.PAID
+    assert order.paid_at is not None
+    assert product.stock_quantity == 8
+    assert reservation.status == InventoryReservation.Status.CONSUMED
+    assert len(gateway.verifications) == 1
+    history = OrderStatusHistory.objects.get(order=order)
+    assert history.from_status == Order.Status.PENDING_PAYMENT
+    assert history.to_status == Order.Status.PAID
+    assert history.actor_type == OrderStatusHistory.ActorType.SYSTEM
+    assert history.actor_user is None
+
+
+@pytest.mark.django_db
+def test_verification_rejects_mismatched_verified_amount_without_mutation(
+    payable_order,
+    gateway,
+    monkeypatch,
+):
+    order, product, reservation = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    original_verify = gateway.verify
+
+    def wrong_amount(**kwargs):
+        return replace(original_verify(**kwargs), amount=Decimal("24.00"))
+
+    monkeypatch.setattr(gateway, "verify", wrong_amount)
+
+    with pytest.raises(PaymentVerificationInvalid, match="amount does not match"):
+        verify_order_payment(attempt=attempt, callback_data={}, gateway=gateway)
+
+    attempt.refresh_from_db()
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    assert attempt.status == PaymentAttempt.Status.PENDING
+    assert order.status == Order.Status.PENDING_PAYMENT
+    assert product.stock_quantity == 10
+    assert reservation.status == InventoryReservation.Status.ACTIVE
+
+
+@pytest.mark.django_db
+def test_authoritative_success_after_expiry_requires_refund_without_stock_deduction(
+    payable_order,
+    gateway,
+):
+    order, product, reservation = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    expire_reservation(reservation)
+
+    result = verify_order_payment(
+        attempt=attempt,
+        callback_data={"opaque": "success"},
+        gateway=gateway,
+    )
+
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt.refresh_from_db()
+    assert result.status == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert order.status == Order.Status.EXPIRED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert product.stock_quantity == 10
+
+
+@pytest.mark.django_db
+def test_authoritative_verification_after_cancellation_requires_refund(
+    payable_order,
+    gateway,
+):
+    order, product, reservation = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    cancel_order(
+        order=order,
+        actor_type=OrderStatusHistory.ActorType.CUSTOMER,
+        actor_user=order.customer.user,
+    )
+    attempt.refresh_from_db()
+
+    result = verify_order_payment(
+        attempt=attempt,
+        callback_data={"opaque": "late-success"},
+        gateway=gateway,
+    )
+
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt.refresh_from_db()
+    assert result.status == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert order.status == Order.Status.CANCELLED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert product.stock_quantity == 10
+    assert len(gateway.verifications) == 1
+
+
+@pytest.mark.django_db
+def test_final_deadline_rollback_refreshes_order_before_expiry(
+    payable_order,
+    gateway,
+    monkeypatch,
+):
+    order, product, reservation = payable_order
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    original_validate_deadline = payment_services._validate_payment_deadline
+    calls = 0
+
+    def expire_after_temporary_paid_mutations(*, reservations, at):
+        nonlocal calls
+        calls += 1
+        if calls == 4:
+            raise PaymentWindowExpired("The order payment window has expired.")
+        return original_validate_deadline(reservations=reservations, at=at)
+
+    monkeypatch.setattr(
+        payment_services,
+        "_validate_payment_deadline",
+        expire_after_temporary_paid_mutations,
+    )
+
+    result = verify_order_payment(
+        attempt=attempt,
+        callback_data={"race": "final-deadline"},
+        gateway=gateway,
+    )
+
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt.refresh_from_db()
+    history = list(OrderStatusHistory.objects.filter(order=order))
+    assert calls == 4
+    assert result.status == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert order.status == Order.Status.EXPIRED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    assert order.paid_at is None
+    assert product.stock_quantity == 10
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert len(history) == 1
+    assert history[0].from_status == Order.Status.PENDING_PAYMENT
+    assert history[0].to_status == Order.Status.EXPIRED
+
+
+def _initiate_in_thread(order_id, gateway, barrier):
+    close_old_connections()
+    try:
+        order = Order.objects.get(pk=order_id)
+        barrier.wait()
+        attempt, _, created = initiate_order_payment(order=order, gateway=gateway)
+        return attempt.pk, created
+    finally:
+        close_old_connections()
+
+
+def _initiate_after_signal(order_id, gateway, started):
+    close_old_connections()
+    try:
+        order = Order.objects.get(pk=order_id)
+        started.set()
+        try:
+            initiate_order_payment(order=order, gateway=gateway)
+        except PaymentWindowExpired:
+            return "expired"
+        return "initiated"
+    finally:
+        close_old_connections()
+
+
+def _initiate_during_cancellation(order_id, gateway):
+    close_old_connections()
+    try:
+        order = Order.objects.get(pk=order_id)
+        try:
+            initiate_order_payment(order=order, gateway=gateway)
+        except OrderNotPayable:
+            return "not-payable"
+        return "initiated"
+    finally:
+        close_old_connections()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_cancellation_during_gateway_initiation_does_not_return_payment_link():
+    customer = create_customer("initiation-cancellation-race@example.com")
+    category = Category.objects.create(name="Initiation cancellation race")
+    product = Product.objects.create(
+        category=category,
+        name="Initiation cancellation product",
+        slug="initiation-cancellation-product",
+        sku="INITIATION-CANCELLATION",
+        price=Decimal("25.00"),
+        stock_quantity=10,
+        status=Product.Status.ACTIVE,
+    )
+    order = create_order(customer)
+    reservation = InventoryReservation.objects.create(
+        order=order,
+        product=product,
+        quantity=2,
+        expires_at=timezone.now() + RESERVATION_LIFETIME,
+    )
+    gateway = BlockingInitiationGateway()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            _initiate_during_cancellation,
+            order.pk,
+            gateway,
+        )
+        assert gateway.started.wait(timeout=5)
+        try:
+            cancel_order(
+                order=order,
+                actor_type=OrderStatusHistory.ActorType.CUSTOMER,
+                actor_user=customer.user,
+            )
+        finally:
+            gateway.release.set()
+        result = future.result(timeout=10)
+
+    order.refresh_from_db()
+    product.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt = PaymentAttempt.objects.get(order=order)
+    assert result == "not-payable"
+    assert order.status == Order.Status.CANCELLED
+    assert order.refund_status == Order.RefundStatus.NOT_REQUIRED
+    assert product.stock_quantity == 10
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert attempt.status == PaymentAttempt.Status.FAILED
+    assert OrderStatusHistory.objects.filter(order=order).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_initiation_waiting_on_order_lock_rechecks_expiry_after_lock():
+    customer = create_customer("initiation-expiry-race@example.com")
+    category = Category.objects.create(name="Initiation expiry race")
+    product = Product.objects.create(
+        category=category,
+        name="Initiation expiry product",
+        slug="initiation-expiry-product",
+        sku="INITIATION-EXPIRY",
+        price=Decimal("25.00"),
+        stock_quantity=2,
+        status=Product.Status.ACTIVE,
+    )
+    order = create_order(customer)
+    reservation = InventoryReservation.objects.create(
+        order=order,
+        product=product,
+        quantity=1,
+        expires_at=timezone.now() + timedelta(seconds=1),
+    )
+    gateway = FakeGateway()
+    started = Event()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with transaction.atomic():
+            Order.objects.select_for_update().get(pk=order.pk)
+            future = executor.submit(
+                _initiate_after_signal,
+                order.pk,
+                gateway,
+                started,
+            )
+            assert started.wait(timeout=5)
+            sleep(1.2)
+        result = future.result(timeout=10)
+
+    order.refresh_from_db()
+    reservation.refresh_from_db()
+    product.refresh_from_db()
+    assert result == "expired"
+    assert order.status == Order.Status.EXPIRED
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert product.stock_quantity == 2
+    assert PaymentAttempt.objects.filter(order=order).exists() is False
+    assert gateway.initiations == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_initiation_creates_one_pending_attempt():
+    customer = create_customer("initiation-race@example.com")
+    category = Category.objects.create(name="Initiation race")
+    product = Product.objects.create(
+        category=category,
+        name="Initiation race product",
+        slug="initiation-race-product",
+        sku="INITIATION-RACE",
+        price=Decimal("25.00"),
+        stock_quantity=2,
+        status=Product.Status.ACTIVE,
+    )
+    order = create_order(customer)
+    InventoryReservation.objects.create(
+        order=order,
+        product=product,
+        quantity=1,
+        expires_at=timezone.now() + RESERVATION_LIFETIME,
+    )
+    start_barrier = Barrier(2)
+    gateway_barrier = Barrier(2)
+    gateway = FakeGateway(initiation_barrier=gateway_barrier)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(_initiate_in_thread, order.pk, gateway, start_barrier)
+            for _ in range(2)
+        ]
+        results = [future.result(timeout=10) for future in futures]
+
+    assert results[0][0] == results[1][0]
+    assert sorted(created for _, created in results) == [False, True]
+    assert (
+        PaymentAttempt.objects.filter(
+            order=order,
+            status=PaymentAttempt.Status.PENDING,
+        ).count()
+        == 1
+    )
+    assert len(gateway.initiations) == 2
+    assert gateway.initiations[0][3] == gateway.initiations[1][3]
+    attempt = PaymentAttempt.objects.get(order=order)
+    assert gateway.initiations[0][3] == attempt.idempotency_key
+    assert attempt.gateway_reference == f"fake-{attempt.idempotency_key}"
+
+
+def _verify_in_thread(attempt_id, gateway, barrier):
+    close_old_connections()
+    try:
+        attempt = PaymentAttempt.objects.get(pk=attempt_id)
+        barrier.wait()
+        result = verify_order_payment(
+            attempt=attempt,
+            callback_data={"thread": str(uuid4())},
+            gateway=gateway,
+        )
+        return result.status
+    finally:
+        close_old_connections()
+
+
+def _verify_after_signal(attempt_id, gateway):
+    close_old_connections()
+    try:
+        attempt = PaymentAttempt.objects.get(pk=attempt_id)
+        result = verify_order_payment(
+            attempt=attempt,
+            callback_data={"race": "product-lock"},
+            gateway=gateway,
+        )
+        return result.status
+    finally:
+        close_old_connections()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_success_waiting_on_product_lock_cannot_finalize_after_expiry():
+    customer = create_customer("product-lock-expiry@example.com")
+    category = Category.objects.create(name="Product lock expiry")
+    product = Product.objects.create(
+        category=category,
+        name="Product lock expiry product",
+        slug="product-lock-expiry-product",
+        sku="PRODUCT-LOCK-EXPIRY",
+        price=Decimal("25.00"),
+        stock_quantity=3,
+        status=Product.Status.ACTIVE,
+    )
+    order = create_order(customer)
+    reservation = InventoryReservation.objects.create(
+        order=order,
+        product=product,
+        quantity=1,
+        expires_at=timezone.now() + RESERVATION_LIFETIME,
+    )
+    gateway = FakeGateway()
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    InventoryReservation.objects.filter(pk=reservation.pk).update(
+        expires_at=timezone.now() + timedelta(seconds=1)
+    )
+    verified = Event()
+    gateway.verification_event = verified
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with transaction.atomic():
+            Product.objects.select_for_update().get(pk=product.pk)
+            future = executor.submit(_verify_after_signal, attempt.pk, gateway)
+            assert verified.wait(timeout=5)
+            sleep(1.2)
+        result = future.result(timeout=10)
+
+    order.refresh_from_db()
+    attempt.refresh_from_db()
+    reservation.refresh_from_db()
+    product.refresh_from_db()
+    assert result == PaymentAttempt.Status.SUCCESS
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert order.status == Order.Status.EXPIRED
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    assert reservation.status == InventoryReservation.Status.RELEASED
+    assert product.stock_quantity == 3
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_successful_verification_deducts_stock_exactly_once():
+    customer = create_customer("verification-race@example.com")
+    category = Category.objects.create(name="Verification race")
+    first = Product.objects.create(
+        category=category,
+        name="First race product",
+        slug="first-race-product",
+        sku="FIRST-RACE",
+        price=Decimal("10.00"),
+        stock_quantity=5,
+        status=Product.Status.ACTIVE,
+    )
+    second = Product.objects.create(
+        category=category,
+        name="Second race product",
+        slug="second-race-product",
+        sku="SECOND-RACE",
+        price=Decimal("5.00"),
+        stock_quantity=6,
+        status=Product.Status.ACTIVE,
+    )
+    order = create_order(customer)
+    reservations = [
+        InventoryReservation.objects.create(
+            order=order,
+            product=second,
+            quantity=1,
+            expires_at=timezone.now() + RESERVATION_LIFETIME,
+        ),
+        InventoryReservation.objects.create(
+            order=order,
+            product=first,
+            quantity=2,
+            expires_at=timezone.now() + RESERVATION_LIFETIME,
+        ),
+    ]
+    gateway = FakeGateway()
+    attempt, _, _ = initiate_order_payment(order=order, gateway=gateway)
+    barrier = Barrier(2)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(_verify_in_thread, attempt.pk, gateway, barrier)
+            for _ in range(2)
+        ]
+        results = [future.result(timeout=10) for future in futures]
+
+    order.refresh_from_db()
+    first.refresh_from_db()
+    second.refresh_from_db()
+    attempt.refresh_from_db()
+    assert results == [PaymentAttempt.Status.SUCCESS] * 2
+    assert order.status == Order.Status.PAID
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert first.stock_quantity == 3
+    assert second.stock_quantity == 5
+    assert all(
+        reservation.status == InventoryReservation.Status.CONSUMED
+        for reservation in InventoryReservation.objects.filter(
+            pk__in=[item.pk for item in reservations]
+        )
+    )
+    assert (
+        OrderStatusHistory.objects.filter(
+            order=order,
+            from_status=Order.Status.PENDING_PAYMENT,
+            to_status=Order.Status.PAID,
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_payment_endpoints_are_documented(api_client):
+    response = api_client.get(reverse("schema"), {"format": "json"})
+
+    assert response.status_code == status.HTTP_200_OK
+    paths = response.json()["paths"]
+    initiation = paths["/api/v1/orders/{order_id}/payments/"]["post"]
+    verification = paths["/api/v1/orders/{order_id}/payments/{payment_id}/verify/"][
+        "post"
+    ]
+    assert initiation["security"] == [{"jwtAuth": []}]
+    assert verification["security"] == [{"jwtAuth": []}]
+    assert {"200", "201", "400", "401", "404", "409", "502", "503"} <= (
+        initiation["responses"].keys()
+    )
+    assert {"200", "400", "401", "404", "409", "503"} <= verification[
+        "responses"
+    ].keys()
