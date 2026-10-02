@@ -6,7 +6,7 @@ Production-oriented e-commerce backend using Python 3.12, Django 5.2,
 Django REST Framework, PostgreSQL, SimpleJWT, pytest/pytest-django, Ruff,
 drf-spectacular, Docker Compose, and Gunicorn.
 
-- Django apps live under `apps/`.
+- The Django backend lives under `backend/`; its apps live under `backend/apps/`.
 - Settings are split into `base.py`, `development.py`, and `production.py`.
 - PostgreSQL is authoritative. Do not design or test behavior specifically for
   SQLite.
@@ -262,9 +262,10 @@ SHIPPED         -> DELIVERED
 
 ## Tests and Verification
 
-Use the real PostgreSQL-backed environment. Run commands in the Compose `web`
-service with `docker compose exec web ...` when it is running, or
-`docker compose run --rm web ...` otherwise.
+Use the real PostgreSQL-backed environment. Run Compose commands from the
+repository root in the `web` service with `docker compose exec web ...` when it
+is running, or `docker compose run --rm web ...` otherwise. Run direct Python
+tooling from `backend/`.
 
 After implementation, run the relevant suite:
 

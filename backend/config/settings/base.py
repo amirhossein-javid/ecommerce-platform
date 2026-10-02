@@ -14,7 +14,7 @@ env = environ.Env(
     DJANGO_CSRF_TRUSTED_ORIGINS=(list, []),
     DJANGO_CORS_ALLOWED_ORIGINS=(list, []),
 )
-environ.Env.read_env(BASE_DIR / ".env")
+environ.Env.read_env(BASE_DIR.parent / ".env")
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="django-insecure-development-only")
 DEBUG = env.bool("DJANGO_DEBUG")

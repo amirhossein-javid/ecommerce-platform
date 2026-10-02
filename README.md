@@ -3,6 +3,11 @@
 Production-oriented REST API built with Python 3.12, Django 5.2, Django REST
 Framework, PostgreSQL, and Docker.
 
+The repository is organized as a monorepo. The Django application and its
+Python tooling live in `backend/`; repository-level Compose, environment, and
+documentation files remain at the root. The future frontend will be added under
+`frontend/` when its implementation begins.
+
 ## Local setup with Docker
 
 1. Copy `.env.example` to `.env` and replace the development secret.
@@ -108,12 +113,12 @@ network-level denial-of-service protection.
 
 ## Production image and deployment lifecycle
 
-The default Docker build installs production requirements, collects immutable
+The default backend Docker build installs production requirements, collects immutable
 static assets, and creates a non-root image. It does not contact PostgreSQL or
 embed deployment credentials while building:
 
 ```bash
-docker build -t ecommerce-api .
+docker build -t ecommerce-api ./backend
 ```
 
 Provide the required production settings described above through the deployment
