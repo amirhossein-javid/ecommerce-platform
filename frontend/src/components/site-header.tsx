@@ -4,6 +4,7 @@ import { Container } from "@/components/container";
 
 const navigation = [
   { href: "/", label: "خانه" },
+  { href: "/products", label: "محصولات" },
 ];
 
 export function SiteHeader() {
