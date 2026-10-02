@@ -1,135 +1,139 @@
 # AGENTS.md
 
-## Project and Stack
+## Start Here
 
-Production-oriented e-commerce backend using Python 3.12, Django 5.2,
-Django REST Framework, PostgreSQL, SimpleJWT, pytest/pytest-django, Ruff,
-drf-spectacular, Docker Compose, and Gunicorn.
+This repository is a production-oriented e-commerce monorepo. The Django/DRF
+backend is feature-complete for the current portfolio scope, production-hardened,
+and should be treated as a stable contract. The next development stage is the
+Next.js frontend; it has not been scaffolded yet.
 
-- The Django backend lives under `backend/`; its apps live under `backend/apps/`.
-- Settings are split into `base.py`, `development.py`, and `production.py`.
-- PostgreSQL is authoritative. Do not design or test behavior specifically for
-  SQLite.
-- Prefer simple, explicit Django/DRF patterns and the smallest correct change.
+Read these sources before changing the areas they govern:
 
-Before implementing, inspect the relevant models, services, migrations,
-serializers, views, URLs, tests, and settings. Follow existing conventions
-instead of creating parallel abstractions.
+- `README.md`: local setup, production configuration, Docker/runtime lifecycle,
+  security settings, health probes, maintenance commands, media caveats, and
+  the manual Bale smoke flow.
+- `FRONTEND_HANDOFF.md`: authoritative frontend integration guidance, API flow
+  summaries, BFF security boundaries, media/payment behavior, and the current
+  A/B/C/D frontend-readiness classification.
+- `GET /api/schema/` and `GET /api/docs/`: generated OpenAPI contract and Swagger
+  UI. Code and tests remain authoritative where OpenAPI cannot express a rule.
+- Tests beside each Django app: executable specifications for permissions,
+  concurrency, state transitions, data exposure, and error behavior.
 
-## Development Rules
+Do not rely on historical milestones or chat context. Inspect the current code,
+tests, migrations, settings, and relevant documents before implementing.
 
-- Understand and preserve domain rules before changing implementation.
-- Put multi-model workflows in small, explicit domain services. Keep HTTP
-  parsing, authentication, permissions, and API error mapping in DRF.
-- Use database constraints for important invariants when practical.
-- Do not use signals for important business workflows.
-- Add tests for meaningful behavior, regressions, permissions, and security
-  boundaries; do not add tests merely to increase coverage.
-- Avoid speculative layers, dependencies, infrastructure, and refactors.
-- Do not silently change public API behavior.
-- Treat committed migrations as immutable. Add incremental migrations and run
-  migration consistency checks after model changes.
+## Repository and Ownership Boundaries
 
-## Transaction and Concurrency Rules
+```text
+ecommerce/
+├── backend/                 # Django application and Python tooling
+│   ├── apps/                # accounts, products, carts, orders, payments, common
+│   ├── config/              # URLs and split settings
+│   ├── docker/              # backend container healthcheck
+│   ├── requirements/
+│   ├── Dockerfile
+│   ├── gunicorn.conf.py
+│   ├── manage.py
+│   └── pyproject.toml
+├── compose.yaml             # repository-level local orchestration
+├── .env.example             # repository-level environment contract
+├── README.md
+├── FRONTEND_HANDOFF.md
+└── AGENTS.md
+```
 
-These rules are mandatory for commerce workflows:
+`frontend/` will live beside `backend/`, but does not exist yet. Do not add
+frontend code, placeholder directories, dependencies, or monorepo tooling unless
+the current task explicitly starts that work.
 
-- Use one outer `transaction.atomic()` boundary for all-or-nothing domain work.
-- Lock the aggregate/ownership row before trusting mutable state, then
-  revalidate after acquiring the lock.
-- Lock multi-row sets deterministically by primary key.
-- Workflows touching the same data must use compatible lock ordering.
-- Established lifecycle lock order is:
+The backend uses Python 3.12, Django 5.2, DRF, PostgreSQL, SimpleJWT,
+drf-spectacular, pytest/pytest-django, Ruff, Docker, and Gunicorn. PostgreSQL is
+authoritative; never design implementation or concurrency behavior around
+SQLite.
 
-  `Order -> PaymentAttempt (when needed) -> InventoryReservation -> Product (PK order)`
+Run Compose from the repository root. Run direct Python tooling from `backend/`.
+The Compose `web` service mounts `backend/` at `/app`.
 
-- Never call a gateway or other network API while holding long-lived database
-  locks.
-- Stock deduction and restoration must each be exactly once.
-- After savepoint rollback, account for stale in-memory Django model instances;
-  refresh state safely without weakening held aggregate locks.
-- Concurrency tests must use real, separate PostgreSQL connections and assert
-  final database invariants, not only response codes.
+## Change Discipline
 
-## Accounts and Addresses
+- Prefer the smallest correct change. Do not add speculative endpoints,
+  abstractions, dependencies, infrastructure, or generic cleanup.
+- The backend contract is frozen unless a concrete correctness, security, or
+  frontend-integration requirement proves a change is necessary. Do not redesign
+  working APIs for style or premature frontend convenience.
+- Trace a behavior through URLs, views/serializers, services, models, admin,
+  settings, migrations, and tests before changing it. Follow existing patterns
+  instead of creating parallel workflows.
+- Keep HTTP parsing, authentication, permissions, throttling, and API error
+  mapping in DRF. Put multi-model domain workflows in small explicit services.
+- Use database constraints for important invariants where practical. Do not use
+  signals for critical business workflows.
+- Treat committed migrations as immutable. Add an incremental migration only
+  for a real schema change and run migration consistency checks.
+- Preserve public response fields, status codes, headers, ownership-hiding
+  behavior, and OpenAPI output unless the task deliberately changes the API.
+- Add tests for meaningful behavior, regressions, permissions, security
+  boundaries, and concurrency—not merely to increase coverage.
+- Preserve unrelated user changes in a dirty worktree.
 
-- The custom `User` is the authentication identity and uses email-only login.
-  Preserve email canonicalization, case-insensitive uniqueness, Django password
-  hashing, and cross-app references through `AUTH_USER_MODEL`/`get_user_model()`.
-- `CustomerProfile` holds customer-specific state. Public registration creates
-  both `User` and `CustomerProfile` explicitly; staff/system users may lack a
-  profile.
-- Authenticated users without a `CustomerProfile` must fail safely and must
-  never fall back to guest credentials or state.
-- Customer-owned resources derive ownership from the authenticated user. Never
-  trust client-supplied ownership fields, and enforce isolation at queryset or
-  object lookup level.
-- Addresses belong to `CustomerProfile`. At most one may be default; zero is
-  valid. The first address created by application workflows becomes default.
-  Deleting a default does not promote another address.
-- Saved addresses are mutable customer data, not historical order snapshots.
+## Frozen Backend Invariants
 
-## Catalog
+These are hard rules, not implementation suggestions.
 
-- `Category` is hierarchical and protects against self-parenting and ancestor
-  cycles.
-- `Product` lifecycle is `DRAFT` / `ACTIVE` / `ARCHIVED`; public visibility must
-  respect product and category state.
-- SKU uniqueness is case-insensitive.
-- `ProductImage` enforces at most one primary image per product and deterministic
-  positions.
+### Identity, Authorization, and Data Exposure
 
-## Cart
+- The custom `User` is the email-only authentication identity. Preserve email
+  canonicalization, case-insensitive uniqueness, Django password hashing, and
+  references through `AUTH_USER_MODEL`/`get_user_model()`.
+- `CustomerProfile` contains customer state. Registration creates both records
+  explicitly; staff/system users may lack a profile. An authenticated user
+  without a profile must fail safely and never fall back to guest state.
+- Derive ownership from the authenticated user. Never accept writable owner,
+  privilege, lifecycle, or audit fields from clients. Scope querysets/lookups so
+  cross-customer and unknown objects are indistinguishable where established.
+- Addresses belong to a profile. At most one is default; zero is valid. The first
+  address created through the API becomes default, and deleting it does not
+  promote another.
+- Non-superusers cannot grant privileges through User or Group admin. Admin
+  access and `is_staff` alone never authorize domain/operator actions.
+- SimpleJWT access/refresh, rotation, blacklisting, logout, and inactive-user
+  behavior are established contracts. See `FRONTEND_HANDOFF.md` before touching
+  auth flows.
 
-- Carts are persistent and have `ACTIVE` / `CONVERTED` state.
-- Guest carts use opaque `X-Cart-Token` bearer credentials. Scope token lookups
-  to eligible guest-owned records and rotate or invalidate tokens when state is
-  claimed or consumed.
-- Authenticated ownership is isolated. Guest-to-authenticated merging is an
-  explicit workflow; never use guest credentials as authenticated ownership
-  proof.
-- A cart does not reserve or decrement stock and displays current authoritative
-  product prices.
+### Catalog and Media
 
-## Orders and Checkout
+- Public catalog visibility requires an `ACTIVE` product and active direct
+  category. Preserve the current API filters, pagination, snapshots, and N+1
+  protections.
+- Category parent mutations are serialized with the existing PostgreSQL
+  transaction-level advisory lock and revalidated inside the transaction.
+  `Category.save()` is authoritative; do not reintroduce `QuerySet.update`,
+  `bulk_update`, or parented `bulk_create` bypasses. Preserve the direct
+  self-parent database constraint.
+- SKU uniqueness is case-insensitive. Product prices are positive whole IRR.
+- A product has at most one primary image and deterministic image positions.
+  Product/media ownership remains in Django. Production media storage is a
+  deployment decision, not a frontend responsibility to redefine.
 
-- Orders snapshot product identity, unit prices, totals, and shipping address;
-  historical reads must not depend on later product, price, or address changes.
-- Prices and totals are computed from authoritative server-side data.
-- Checkout atomically creates a `PENDING_PAYMENT` order, order items, and ACTIVE
-  inventory reservations. The cart becomes `CONVERTED` only after success.
-- Reservations represent availability claims and do not decrement physical
-  stock.
+### Cart, Money, and Checkout
 
-## Money
+- Carts are persistent and `ACTIVE` or `CONVERTED`. They display current product
+  data and never reserve or decrement stock.
+- Guest carts use opaque `X-Cart-Token` bearer credentials. Resolve tokens only
+  to active guest-owned carts. Authenticated requests use customer ownership and
+  ignore guest credentials. Merge is explicit, atomic, consumes/rotates the
+  guest credential, and must be replay-safe.
+- Store currency is IRR. Use `Decimal`/`DecimalField`, never binary floats.
+  API money values are whole-rial strings. Clients never determine authoritative
+  prices or totals.
+- Checkout atomically revalidates the customer, address, cart, products, prices,
+  stock availability, and existing reservations. It creates a
+  `PENDING_PAYMENT` order with immutable item/address/price snapshots and ACTIVE
+  reservations, then converts the cart. Reservations claim availability but do
+  not decrement physical stock.
 
-- Store currency is IRR.
-- Use `Decimal`/`DecimalField`, never binary floats.
-- Amounts must be whole rials and are protected by validation and database
-  constraints.
-- Money in APIs is represented as whole-rial strings. Clients never determine
-  authoritative prices or totals.
-
-## Payments
-
-- `PaymentAttempt` is many-to-one with `Order`; an order may have at most one
-  PENDING attempt. Attempt states are `PENDING`, `SUCCESS`, and `FAILED`.
-- Each attempt has a durable unique idempotency key. Create durable intent before
-  the gateway call, perform the network call outside long transactions, then
-  lock and revalidate before persisting its result.
-- Successful finalization decrements physical stock exactly once and changes
-  ACTIVE reservations to CONSUMED.
-- Late success cannot revive an expired or cancelled order.
-- Bale initiation, webhook handling, verification/inquiry, idempotency, and
-  local recovery are implemented. Keep webhook input and gateway errors
-  sanitized.
-- Customer payment URLs/identifiers are exposed only while the attempt is
-  PENDING. Do not expose private gateway references, credentials, idempotency
-  keys, or internal payment data.
-- A `SUCCESS` attempt remains historical truth when a paid order is later
-  cancelled.
-
-## Order Lifecycle
+### Order Lifecycle, Fulfillment, and Refunds
 
 Allowed transitions are exactly:
 
@@ -144,190 +148,213 @@ PROCESSING      -> CANCELLED
 SHIPPED         -> DELIVERED
 ```
 
-`DELIVERED`, `CANCELLED`, and `EXPIRED` are terminal.
+`DELIVERED`, `CANCELLED`, and `EXPIRED` are terminal. Do not add generic status
+mutation paths.
 
-- PAID and EXPIRED are compound SYSTEM workflows, not generic/public
-  transitions.
-- PROCESSING, SHIPPED, and DELIVERED are OPERATOR actions and require an actor
-  user.
-- A CUSTOMER owner or OPERATOR may cancel only before SHIPPED.
-- `OrderStatusHistory` is append-only application audit history with explicit
-  CUSTOMER / OPERATOR / SYSTEM attribution.
-- Lifecycle timestamps are source-of-truth fields on `Order` and are written
-  exactly once.
-- Idempotency is command-specific: a duplicate command by the same authorized
-  actor is safe, but a different actor/action must not be hidden as success.
-
-### Cancellation and Refund Tracking
-
+- `PAID` and `EXPIRED` are compound system workflows. Fulfillment transitions
+  are operator actions with an actor. Customer/operator cancellation is allowed
+  only before `SHIPPED` and uses the domain service.
+- Lifecycle timestamps on `Order` are written exactly once and are the source of
+  truth. `OrderStatusHistory` is append-only with explicit customer/operator/
+  system attribution.
+- Command idempotency is actor/action-specific; a different actor or action must
+  not be hidden as a successful replay.
 - Cancelling `PENDING_PAYMENT` releases ACTIVE reservations, terminalizes a
-  PENDING payment attempt, leaves physical stock unchanged, and sets refund
-  status to `NOT_REQUIRED`.
-- Cancelling `PAID` or `PROCESSING` restores physical stock exactly once from
-  authoritative aggregated `OrderItem` quantities. CONSUMED reservations and
-  `PaymentAttempt.SUCCESS` remain unchanged; refund status becomes `REQUIRED`.
-- Refund tracking states are `NOT_REQUIRED`, `REQUIRED`, and `RESOLVED`. Manual
-  resolution records operator and timestamp and is idempotent for that operator.
-- There is no automatic/gateway refund, partial refund, or separate Refund
-  domain yet.
+  pending attempt, leaves stock unchanged, and needs no refund.
+- Cancelling `PAID` or `PROCESSING` restores stock exactly once from aggregated
+  order snapshots, preserves consumed reservations and successful payment
+  history, and marks the refund `REQUIRED`.
+- Refund tracking is only `NOT_REQUIRED`, `REQUIRED`, and `RESOLVED`. Resolution
+  is a manual idempotent operator action. There is no automatic, gateway, or
+  partial refund workflow.
+- `Shipment` is one-to-one, created during `PAID -> PROCESSING`, editable only
+  while processing, required for shipping, and immutable after shipment through
+  normal application/admin paths.
 
-### Fulfillment
+### Payments and Bale
 
-- `Shipment` is one-to-one with `Order` and is created atomically during
-  `PAID -> PROCESSING`.
-- Carrier and tracking number may be edited only while PROCESSING and are
-  required before SHIPPED.
-- Shipment data is immutable after SHIPPED through normal application/admin
-  paths.
-- Lifecycle timestamps on `Order`, not `Shipment`, are the fulfillment source
-  of truth.
+- `PaymentAttempt` is many-to-one with `Order`; at most one attempt may be
+  `PENDING`. Attempts use durable unique idempotency keys.
+- Persist payment intent before calling a gateway. Never hold long-lived
+  database locks during network calls. Lock and revalidate authoritative state
+  before persisting the result.
+- Successful finalization decrements physical stock and consumes reservations
+  exactly once. A successful attempt remains historical truth after later
+  cancellation.
+- Provider-authoritative late success must be recorded as `SUCCESS` even when
+  the order is already `CANCELLED` or `EXPIRED`. The terminal order stays
+  terminal, stock/reservations are not recreated or deducted, and refund status
+  becomes `REQUIRED`.
+- Client redirect/query/SDK callback data is never proof of payment. Bale
+  webhook success requires provider inquiry and transaction identity checks
+  before finalization. Webhooks remain direct Django/provider integrations, not
+  BFF routes.
+- Preserve initiation/verification idempotency, webhook replay handling, unique
+  provider transaction identities, and the existing recovery path.
+- Customer responses expose handoff URLs/identifiers only while an attempt is
+  pending. Never expose or log gateway credentials, private references,
+  provider transaction IDs, idempotency keys, raw webhook payloads, or internal
+  payment data.
 
-## Store Operations and Observability
+### Transactions and Concurrency
 
-### Django Admin and Operator Boundaries
+Commerce concurrency rules are mandatory:
 
-- Django Admin is an operator interface, not a generic state editor. Order,
-  payment, reservation, refund, shipment lifecycle, lifecycle-driven stock,
-  and audit state must not be mutated directly through admin model forms or
-  bulk updates.
-- Fulfillment, cancellation, and refund actions must delegate to the existing
-  domain services so locking, exactly-once inventory behavior, audit history,
-  idempotency, and actor attribution remain intact.
-- Admin access or `is_staff` alone does not authorize privileged operations.
-  Actions require the relevant Django model permission, and non-superusers must
-  not grant privileges or manage privileged accounts.
-- Protect operational records from unsafe add/delete/change paths. Payment
-  attempts and durable Bale webhook records are read-only in Admin; orders are
-  changed only through explicit domain-backed actions. Shipment details may be
-  edited only while the order is PROCESSING and remain protected by the model's
-  locked invariant checks.
-- Catalog management and explicit physical-stock corrections may use the
-  validated, locked Product Admin workflow; stock must not be reduced below
-  unexpired ACTIVE reservations or used to bypass payment/cancellation services.
-- Do not expose gateway credentials, private references, provider transaction
-  identifiers, idempotency keys, payment URLs/tokens, raw webhook payloads, or
-  unnecessary customer/payment data in Admin.
-- Operational visibility is derived from authoritative domain fields using
-  list displays, filters, annotations, and read-only indicators. Do not add
-  persistent attention flags, arbitrary "stuck" timeouts, or per-row queries;
-  add query-count tests where changelist N+1 regressions are plausible.
+- Use one outer `transaction.atomic()` for all-or-nothing domain work.
+- Lock the aggregate/ownership row before trusting mutable state, then revalidate.
+- Lock multi-row sets deterministically by primary key.
+- Workflows touching the same data must use the established order:
 
-### Application Logging
+  `Order -> PaymentAttempt (when needed) -> InventoryReservation -> Product (PK order)`
 
-- Use Python/Django logging for meaningful lifecycle, cancellation, inventory,
-  payment, Bale recovery, refund, and fulfillment outcomes. Prefer stable IDs,
-  actor type/ID, previous/new state, outcome, and a safe failure category.
-- Important committed successes must be logged with `transaction.on_commit()`;
-  callbacks scheduled inside savepoints must disappear on rollback. Logging
-  must not change exception, transaction, locking, retry, or idempotency
-  behavior and must not duplicate `OrderStatusHistory` as another audit system.
-- Use INFO for important successful transitions, WARNING for recoverable or
-  attention-worthy conditions, and ERROR for unexpected failures at the layer
-  with useful domain context. Do not swallow exceptions merely to log them or
-  emit duplicate stack traces across layers.
-- Never log secrets, credentials, authorization headers, payment URLs/tokens,
-  idempotency keys, raw gateway/webhook payloads, private provider references or
-  transaction identifiers, untrusted exception text, or unnecessary customer
-  PII such as email, phone, and address data.
+- Stock deduction and restoration are each exactly once.
+- After savepoint rollback, account for stale in-memory Django instances without
+  weakening locks held by the outer transaction.
+- Real concurrency tests use separate PostgreSQL connections and assert final
+  database invariants, not only response codes. Do not replace them with mocks
+  or SQLite tests.
 
-### Health and Recovery
+### Admin, Logging, and Recovery
 
-- `GET /api/v1/health/` is the unauthenticated liveness probe. It reports that
-  Django can serve a request and must remain cheap and dependency-free.
-- `GET /api/v1/health/readiness/` is the unauthenticated readiness probe. It
-  performs one minimal `SELECT 1` against the authoritative PostgreSQL database
-  and returns HTTP 503 with a fixed, non-sensitive body when unavailable.
-- PostgreSQL is currently the only request-serving readiness dependency. Do not
-  call Bale or other third parties from readiness, and do not add Redis, cache,
-  or Celery checks unless the architecture later makes them required to serve
-  normal requests.
-- Existing recovery paths are the `recover_bale_payments` management command,
-  domain-backed Admin lifecycle/cancellation/refund actions, and payment service
-  retry/expiry handling. Recovery must reuse those services and invariants.
-  Do not add speculative commands or generic state-editing/fix-data tools; add
-  the smallest idempotent command only for a demonstrated operational gap.
+- Django Admin is an operator interface, not a generic state editor. Orders,
+  payments, reservations, refunds, shipment lifecycle, stock side effects, and
+  audit rows must be changed only through existing domain-backed actions.
+- Payment attempts and durable Bale webhook records are read-only in Admin.
+  Catalog management and explicit stock correction must retain model validation,
+  locking, and reservation-aware safeguards.
+- Important committed lifecycle/payment/inventory outcomes are logged with
+  `transaction.on_commit()`. Callbacks inside rolled-back savepoints must vanish.
+  Logging must never change exception, transaction, locking, retry, or
+  idempotency behavior.
+- Log stable internal IDs and safe outcome categories, not secrets, auth headers,
+  payment handoff values, idempotency keys, raw provider data, untrusted exception
+  text, or unnecessary customer PII.
+- Reuse the existing `recover_bale_payments` command and domain/admin recovery
+  paths. Do not add generic fix-data commands without a demonstrated gap.
 
-## API and Data Rules
+## Frontend Stage and Boundary
 
-- Authentication endpoints use `/api/v1/auth/`; authenticated customer account
-  resources use `/api/v1/account/`; commerce/catalog endpoints use `/api/v1/`.
-- Use DRF validation consistently and keep writable/read-only fields explicit.
-- Do not leak object existence across ownership boundaries or expose internal
-  ownership/privilege fields through writes.
-- Keep OpenAPI output accurate when endpoints change.
-- Use `select_related()`/`prefetch_related()` for nested data and query-count
-  tests where N+1 regressions are plausible.
-- Historical commerce data comes from immutable snapshots; current catalog and
-  cart data use authoritative live product data where appropriate.
+The chosen frontend direction is:
 
-## Tests and Verification
+- Next.js with App Router, TypeScript, and Tailwind CSS.
+- `frontend/` beside `backend/` when scaffolding begins.
+- Server-first rendering where useful; Client Components only for actual
+  interactivity.
+- A thin Next.js BFF/auth boundary. Browser credentials are kept out of
+  localStorage and JavaScript-readable cookies.
+- Browser-facing production topology is same-origin. Next.js calls Django with
+  the existing JWT Bearer contract.
+- No Redux, TanStack Query, Turborepo, Nx, or other infrastructure unless a
+  concrete implementation need justifies it.
 
-Use the real PostgreSQL-backed environment. Run Compose commands from the
-repository root in the `web` service with `docker compose exec web ...` when it
-is running, or `docker compose run --rm web ...` otherwise. Run direct Python
-tooling from `backend/`.
+The BFF may handle rendering, secure HttpOnly browser cookies, CSRF/origin
+protection for its cookie-authenticated mutations, server-side API calls,
+serialized refresh-token rotation, guest-token cookie handling, and minimal
+proxy/error mapping. It must not duplicate Django validation, pricing, stock,
+cart merge, checkout, lifecycle, payment, refund, or webhook logic.
 
-After implementation, run the relevant suite:
+Follow `FRONTEND_HANDOFF.md` for endpoint sequences and frontend responsibilities.
+In particular:
 
-- `pytest`
-- `python manage.py check`
-- `python manage.py makemigrations --check --dry-run`
-- `python manage.py migrate --check`
-- `ruff check .`
-- `ruff format --check .`
-- `git diff --check`
+- keep JWTs and `X-Cart-Token` out of browser-readable storage;
+- explicitly merge the guest cart after login;
+- do not put personalized responses in shared caches;
+- treat Django order state as payment truth;
+- preserve structured errors and `429` behavior;
+- do not infer public media/payment URLs from internal identifiers.
 
-For API changes also run:
+When frontend implementation uncovers friction, first determine whether it is a
+demonstrated correctness, security, or required integration/contract gap; a BFF
+responsibility; a deployment issue; or a nice-to-have. Change the frozen backend
+only for a demonstrated gap in the first category.
 
-- `python manage.py spectacular --file /tmp/schema.yaml --validate`
+## Production and Security Boundaries
 
-Run production/security checks when the change affects those areas.
+Production configuration is environment-driven and provider-neutral. Detailed
+variables and executable commands live in `README.md` and `.env.example`; do not
+duplicate or drift them here.
 
-The existing drf-spectacular enum naming collision warning is known and
-non-blocking. Do not spend scope on it unless future work introduces or exposes
-a concrete schema problem.
+- Production must fail fast on unsafe secrets, hosts, origins, or database
+  configuration. Never weaken defaults for deployment convenience.
+- Gunicorn serves plain HTTP in the container. TLS and a trustworthy forwarded
+  protocol boundary are deployment responsibilities. Trust forwarding headers
+  only when the ingress strips client values and overwrites them.
+- CORS does not carry browser credentials. With the selected same-origin BFF,
+  browser cookies terminate at Next.js and Django receives Bearer auth.
+- DRF abuse throttles run before expensive side effects. Anonymous identity uses
+  `REMOTE_ADDR` unless an exact trusted proxy count is configured. The current
+  local-memory cache is acceptable only for the default single-process/runtime
+  assumption; scale-out needs a shared cache or trusted ingress limiting.
+- Migrations are an explicit single release step, never web startup. Static
+  collection happens during image build. The web image starts Gunicorn directly.
+- `/api/v1/health/` is cheap dependency-free liveness. Readiness at
+  `/api/v1/health/readiness/` checks PostgreSQL only and returns a fixed 503 body
+  on database failure. Do not add Bale or optional services to readiness.
+- Run SimpleJWT `flushexpiredtokens` periodically from one scheduled production
+  runner. Do not add it to web startup.
 
-## Git and Change Discipline
+## Known and Deferred Decisions
 
-- Codex must never commit, push, merge, rebase, create/switch branches, stash,
-  rewrite history, or otherwise alter Git history. The user manages Git.
-- The project uses feature branches merged with `--no-ff` and Conventional
-  Commits.
-- Keep tasks narrowly scoped, preserve unrelated work, inspect the final diff,
-  and report changes, checks, and limitations concisely.
+Do not mistake these for defects without a concrete requirement:
 
-## Current State and Roadmap
+- No deployment provider, public domain, durable media provider, database backup
+  mechanism, or multi-replica cache has been selected. HSTS includeSubDomains and
+  preload remain deployment-specific choices.
+- Real Bale network validation depends on the selected deployment environment.
+  The current customer handoff uses a Bale Mini App payment identifier, not a
+  guaranteed standalone-browser payment URL.
+- Customer order detail intentionally does not yet expose shipment tracking,
+  full status history, lifecycle timestamps, stored refund status, or the
+  payment deadline after the initial checkout response. See the D findings in
+  `FRONTEND_HANDOFF.md`.
+- The drf-spectacular `status` enum naming collision is known and non-blocking.
+  Do not spend scope on it unless a generated frontend client demonstrates a
+  concrete problem.
+- Category children are derivable from the complete category list; there is no
+  nested-tree endpoint.
+- Automatic/partial refunds, returns/RMA, partial order cancellation,
+  multi-shipment, warehouses/picking, carrier/label integrations, and unnecessary
+  distributed infrastructure are out of scope until requirements change.
 
-Phases 1–7 are complete. Phase 8 — Production Deployment & Final Hardening —
-is the only remaining backend phase:
+## Validation
 
-- Finalize production settings, secrets, HTTPS/security behavior, deployment,
-  container/runtime behavior, and production validation.
-- Perform the final backend security, API/schema, performance, and concurrency
-  review.
-- Run real Bale network end-to-end validation in the selected deployment
-  environment.
-- Review and hand off the frontend-facing API contract after the frontend stack
-  is selected.
+Use the real PostgreSQL-backed environment. If the Compose web service is
+running, prefer `docker compose exec web ...`; otherwise use
+`docker compose run --rm web ...` from the repository root.
 
-No deployment provider has been selected. Keep production configuration
-provider-neutral and environment-driven until that decision is made. HSTS and
-deployment-specific HTTPS hardening are intentionally deferred to Phase 8. The
-frontend stack is also not finalized and must be decided before the final
-frontend-facing audit and handoff.
+Run checks proportional to the change, with the full suite for backend behavior
+changes when practical:
 
-After Phase 8, the backend is considered feature-complete for the portfolio
-scope and frontend implementation begins. Keep backend APIs stable unless a
-real integration problem requires change; do not add premature frontend hacks.
+```text
+pytest
+python manage.py check
+python manage.py makemigrations --check --dry-run
+python manage.py migrate --check
+ruff check .
+ruff format --check .
+git diff --check
+```
 
-## Explicitly Out of Scope
+Also run:
 
-Unless future requirements justify them:
+- `python manage.py spectacular --file /tmp/schema.yaml --validate` for API,
+  serializer, URL, auth, or schema changes;
+- production `check --deploy` for settings/security/runtime changes;
+- production Docker build and health smoke checks for Docker/runtime/path changes;
+- focused real-PostgreSQL concurrency tests for locking changes.
 
-- Automatic or partial refunds
-- Returns/RMA
-- Partial order cancellation
-- Multi-shipment
-- Warehouse/picking systems
-- Carrier or shipping-label integrations
-- Unnecessary distributed infrastructure
+Documentation-only changes do not require the full backend suite. Always report
+what ran, warnings, and anything intentionally not run.
+
+## Git Rules
+
+The user owns Git history and integration. The agent must never:
+
+- commit, merge, push, pull, or rebase;
+- create or switch branches;
+- stash, reset, rewrite history, or discard user changes;
+- stage files unless the user explicitly requests it.
+
+Use read-only Git inspection freely. Keep changes narrowly scoped, inspect the
+final diff/status, and suggest a Conventional Commit message without executing
+it.
