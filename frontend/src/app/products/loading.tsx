@@ -2,10 +2,11 @@ import { Container } from "@/components/container";
 
 export default function ProductsLoading() {
   return (
-    <Container className="py-8 sm:py-12 lg:py-16">
-      <div className="mb-8 border-b border-border pb-7 sm:mb-10">
-        <div className="h-5 w-16 rounded bg-surface-subtle" />
-        <div className="mt-3 h-11 w-40 rounded bg-surface-subtle" />
+    <Container className="py-7 sm:py-10 lg:py-14">
+      <div className="border-b border-border pb-6 sm:pb-8">
+        <div className="h-4 w-32 rounded bg-surface-muted motion-safe:animate-pulse" />
+        <div className="mt-4 h-11 w-40 rounded bg-surface-muted motion-safe:animate-pulse" />
+        <div className="mt-5 h-5 w-full max-w-md rounded bg-surface-muted motion-safe:animate-pulse" />
       </div>
 
       <p className="sr-only" role="status">
@@ -13,18 +14,18 @@ export default function ProductsLoading() {
       </p>
       <div
         aria-hidden="true"
-        className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        className="mt-8 grid grid-cols-1 gap-x-6 gap-y-8 sm:mt-10 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-7 lg:gap-y-10"
       >
-        {Array.from({ length: 8 }, (_, index) => (
+        {Array.from({ length: 6 }, (_, index) => (
           <div
             key={index}
-            className="overflow-hidden rounded-lg border border-border bg-surface"
+            className="overflow-hidden rounded-xl border border-border bg-surface shadow-card"
           >
-            <div className="aspect-[4/3] bg-surface-subtle" />
-            <div className="space-y-4 p-5">
-              <div className="h-4 w-20 rounded bg-surface-subtle" />
-              <div className="h-6 w-4/5 rounded bg-surface-subtle" />
-              <div className="mt-8 h-6 w-28 rounded bg-surface-subtle" />
+            <div className="aspect-[5/4] bg-surface-muted motion-safe:animate-pulse" />
+            <div className="space-y-4 p-6">
+              <div className="h-4 w-20 rounded bg-surface-muted motion-safe:animate-pulse" />
+              <div className="h-7 w-4/5 rounded bg-surface-muted motion-safe:animate-pulse" />
+              <div className="mt-8 h-7 w-32 rounded bg-surface-muted motion-safe:animate-pulse" />
             </div>
           </div>
         ))}

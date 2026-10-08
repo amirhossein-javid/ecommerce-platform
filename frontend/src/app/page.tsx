@@ -2,30 +2,31 @@ import { Container } from "@/components/container";
 
 export default function Home() {
   return (
-    <Container className="py-10 sm:py-16 lg:py-24">
+    <Container className="py-8 sm:py-14 lg:py-20">
       <section
-        className="overflow-hidden rounded-lg border border-border bg-surface shadow-[0_18px_60px_-40px_rgba(29,33,31,0.35)]"
+        className="relative overflow-hidden rounded-2xl border border-border bg-surface shadow-card"
         aria-labelledby="foundation-title"
       >
-        <div className="grid gap-10 px-5 py-9 sm:px-8 sm:py-12 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-14 lg:px-12 lg:py-16">
+        <div className="absolute inset-y-0 start-0 w-1.5 bg-primary" aria-hidden="true" />
+        <div className="grid gap-10 px-6 py-10 sm:px-9 sm:py-14 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16 lg:px-14 lg:py-20">
           <div className="max-w-2xl">
-            <p className="mb-4 text-sm font-semibold text-primary">
+            <p className="mb-4 text-sm font-bold text-primary">
               پایهٔ طراحی فروشگاه
             </p>
             <h1
               id="foundation-title"
-              className="text-3xl font-bold leading-[1.45] tracking-tight text-foreground sm:text-4xl lg:text-5xl"
+              className="text-3xl font-black leading-[1.45] tracking-tight text-foreground sm:text-4xl lg:text-5xl"
             >
-              چارچوبی روشن برای یک تجربهٔ خرید فارسی
+              تجربه‌ای گرم و منسجم برای خرید فارسی
             </h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground sm:text-lg sm:leading-9">
-              این صفحه فقط ساختار بصری، تایپوگرافی و ریتم رابط را نمایش می‌دهد.
-              محتوای واقعی فروشگاه و محصولات در مرحله‌های بعد اضافه می‌شوند.
+              این صفحه ساختار بصری و تایپوگرافی فروشگاه را معرفی می‌کند. فهرست
+              محصولات با داده‌های واقعی در بخش محصولات در دسترس است.
             </p>
           </div>
 
-          <div className="border-t border-border pt-8 lg:border-s lg:border-t-0 lg:ps-10 lg:pt-0">
-            <h2 className="text-base font-bold text-foreground">در این مرحله</h2>
+          <div className="border-t border-border pt-8 lg:border-s lg:border-t-0 lg:ps-12 lg:pt-0">
+            <h2 className="text-base font-extrabold text-primary">پایه‌های تجربه</h2>
             <ul className="mt-5 space-y-4 text-sm leading-7 text-muted-foreground sm:text-base">
               <li className="flex gap-3">
                 <span
@@ -46,7 +47,7 @@ export default function Home() {
                   aria-hidden="true"
                   className="mt-[0.7rem] size-1.5 shrink-0 rounded-full bg-primary"
                 />
-                <span>پایه‌های بصری قابل توسعه برای ادامهٔ کار</span>
+                <span>نمایش داده و تصاویر واقعی کاتالوگ</span>
               </li>
             </ul>
           </div>

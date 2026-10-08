@@ -25,7 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <body className={`${vazirmatn.variable} antialiased`}>
         <a
           href="#main-content"
-          className="sr-only z-50 rounded-md bg-primary px-4 py-3 font-semibold text-primary-foreground focus:not-sr-only focus:fixed focus:start-4 focus:top-4"
+          className="sr-only z-50 rounded-lg bg-primary px-4 py-3 font-bold text-primary-foreground shadow-card focus:not-sr-only focus:fixed focus:start-4 focus:top-4"
         >
           پرش به محتوای اصلی
         </a>

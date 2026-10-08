@@ -2,18 +2,22 @@
 
 :root {
   color-scheme: light;
-  --background: #f7f7f4;
-  --foreground: #1d211f;
-  --muted-foreground: #626863;
-  --surface: #ffffff;
-  --surface-subtle: #efefea;
-  --border: #dcddd7;
-  --primary: #245f58;
-  --primary-foreground: #ffffff;
-  --destructive: #b42318;
-  --success: #18794e;
-  --focus: #1d6fc2;
-  --radius: 0.75rem;
+  --background: #f6f4ef;
+  --foreground: #242a29;
+  --muted-foreground: #69716e;
+  --surface: #fffefc;
+  --surface-muted: #eceae4;
+  --border: #d9d7cf;
+  --primary: #123f36;
+  --primary-hover: #0c322a;
+  --primary-foreground: #fffefc;
+  --primary-soft: #dcebe5;
+  --destructive: #a12b3a;
+  --destructive-soft: #f7e4e7;
+  --success: #276449;
+  --success-soft: #e0ede5;
+  --focus: #176c5a;
+  --shadow-color: 36 42 41;
 }
 
 @theme inline {
@@ -21,17 +25,27 @@
   --color-foreground: var(--foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-surface: var(--surface);
-  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-muted: var(--surface-muted);
   --color-border: var(--border);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
   --color-destructive: var(--destructive);
+  --color-destructive-soft: var(--destructive-soft);
   --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
   --color-focus: var(--focus);
   --font-sans: var(--font-vazirmatn), Tahoma, Arial, sans-serif;
-  --radius-sm: calc(var(--radius) - 0.25rem);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 0.25rem);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --shadow-card: 0 1px 2px rgb(var(--shadow-color) / 0.04),
+    0 14px 34px -24px rgb(var(--shadow-color) / 0.28);
+  --shadow-card-hover: 0 2px 4px rgb(var(--shadow-color) / 0.05),
+    0 20px 44px -26px rgb(var(--shadow-color) / 0.34);
 }
 
 * {
@@ -52,11 +66,21 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
 ::selection {
-  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  background: var(--primary-soft);
+  color: var(--foreground);
 }
 
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
+}
+
+footer :focus-visible {
+  outline-color: var(--primary-foreground);
 }

@@ -1,9 +1,20 @@
 const WHOLE_RIAL_PATTERN = /^\d+$/;
 
-export function formatRial(price: string) {
-  if (!WHOLE_RIAL_PATTERN.test(price)) {
+/** Formats an authoritative whole-rial string as toman without losing remainders. */
+export function formatToman(priceInRials: string) {
+  if (!WHOLE_RIAL_PATTERN.test(priceInRials)) {
     return "قیمت نامعتبر";
   }
 
-  return `${BigInt(price).toLocaleString("fa-IR")} ریال`;
+  const rials = BigInt(priceInRials);
+  const ten = BigInt(10);
+  const tomans = rials / ten;
+  const remainingRials = rials % ten;
+  const formattedTomans = tomans.toLocaleString("fa-IR");
+
+  if (remainingRials === BigInt(0)) {
+    return `${formattedTomans} تومان`;
+  }
+
+  return `${formattedTomans} تومان و ${remainingRials.toLocaleString("fa-IR")} ریال`;
 }

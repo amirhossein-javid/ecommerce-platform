@@ -32,9 +32,9 @@ function parsePage(value: string | string[] | undefined) {
 
 function EmptyCatalog() {
   return (
-    <section className="rounded-lg border border-dashed border-border bg-surface px-5 py-14 text-center sm:px-8 sm:py-20">
+    <section className="rounded-2xl border border-dashed border-border bg-surface px-5 py-14 text-center shadow-card sm:px-8 sm:py-20">
       <div
-        className="mx-auto flex size-14 items-center justify-center rounded-full bg-surface-subtle text-muted-foreground"
+        className="mx-auto flex size-16 items-center justify-center rounded-xl border border-border bg-surface-muted text-primary"
         aria-hidden="true"
       >
         <svg viewBox="0 0 48 48" fill="none" className="size-7">
@@ -52,7 +52,7 @@ function EmptyCatalog() {
           />
         </svg>
       </div>
-      <h2 className="mt-5 text-xl font-bold text-foreground">
+      <h2 className="mt-6 text-xl font-extrabold text-foreground sm:text-2xl">
         هنوز محصولی برای نمایش نیست
       </h2>
       <p className="mx-auto mt-3 max-w-md leading-8 text-muted-foreground">
@@ -66,9 +66,15 @@ function CatalogError({ missingPage }: { missingPage: boolean }) {
   return (
     <section
       role="alert"
-      className="rounded-lg border border-destructive/25 bg-surface px-5 py-12 text-center sm:px-8 sm:py-16"
+      className="rounded-2xl border border-destructive/25 bg-destructive-soft/45 px-5 py-12 text-center shadow-card sm:px-8 sm:py-16"
     >
-      <h2 className="text-xl font-bold text-foreground">
+      <div
+        aria-hidden="true"
+        className="mx-auto flex size-14 items-center justify-center rounded-xl bg-destructive-soft text-2xl font-black text-destructive"
+      >
+        !
+      </div>
+      <h2 className="mt-5 text-xl font-extrabold text-foreground sm:text-2xl">
         {missingPage
           ? "این صفحه از محصولات وجود ندارد"
           : "دریافت محصولات ممکن نشد"}
@@ -80,11 +86,30 @@ function CatalogError({ missingPage }: { missingPage: boolean }) {
       </p>
       <a
         href="/products"
-        className="mt-6 inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90"
+        className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground shadow-card transition-colors hover:bg-primary-hover"
       >
         بازگشت به ابتدای فهرست
       </a>
     </section>
+  );
+}
+
+function CatalogHeading() {
+  return (
+    <header className="border-b border-border pb-6 sm:pb-8">
+      <div className="max-w-2xl">
+        <p className="flex items-center gap-3 text-sm font-bold text-primary">
+          <span className="h-px w-8 bg-primary" aria-hidden="true" />
+          کاتالوگ فروشگاه
+        </p>
+        <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
+          محصولات
+        </h1>
+        <p className="mt-3 max-w-xl text-sm leading-7 text-muted-foreground sm:text-base sm:leading-8">
+          محصولات فعال فروشگاه را با قیمت و وضعیت موجودی به‌روز مرور کنید.
+        </p>
+      </div>
+    </header>
   );
 }
 
@@ -102,18 +127,15 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   if (!products) {
     return (
-      <Container className="py-8 sm:py-12 lg:py-16">
-        <header className="mb-8 border-b border-border pb-7 sm:mb-10">
-          <p className="text-sm font-semibold text-primary">فروشگاه</p>
-          <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            محصولات
-          </h1>
-        </header>
-        <CatalogError
-          missingPage={
-            requestError instanceof CatalogApiError && requestError.status === 404
-          }
-        />
+      <Container className="py-7 sm:py-10 lg:py-14">
+        <CatalogHeading />
+        <div className="mt-8 sm:mt-10">
+          <CatalogError
+            missingPage={
+              requestError instanceof CatalogApiError && requestError.status === 404
+            }
+          />
+        </div>
       </Container>
     );
   }
@@ -124,26 +146,18 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   );
 
   return (
-    <Container className="py-8 sm:py-12 lg:py-16">
-      <header className="mb-8 flex flex-col gap-3 border-b border-border pb-7 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-primary">فروشگاه</p>
-          <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            محصولات
-          </h1>
-        </div>
-        <p className="text-sm font-medium text-muted-foreground">
-          {products.count.toLocaleString("fa-IR")} محصول
-        </p>
-      </header>
+    <Container className="py-7 sm:py-10 lg:py-14">
+      <CatalogHeading />
 
       {products.results.length === 0 ? (
-        <EmptyCatalog />
+        <div className="mt-8 sm:mt-10">
+          <EmptyCatalog />
+        </div>
       ) : (
         <>
           <section
             aria-label="فهرست محصولات"
-            className="grid min-w-0 grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            className="mt-8 grid min-w-0 grid-cols-1 gap-x-6 gap-y-8 sm:mt-10 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-7 lg:gap-y-10"
           >
             {products.results.map((product) => (
               <ProductCard key={product.id} product={product} />
