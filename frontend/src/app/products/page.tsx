@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { Container } from "@/components/container";
 import { Pagination } from "@/components/pagination";
@@ -84,12 +85,12 @@ function CatalogError({ missingPage }: { missingPage: boolean }) {
           ? "شمارهٔ صفحه معتبر نیست یا از محدودهٔ فهرست خارج شده است."
           : "ارتباط با سرویس فروشگاه برقرار نشد. لطفاً کمی بعد دوباره تلاش کنید."}
       </p>
-      <a
+      <Link
         href="/products"
         className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground shadow-card transition-colors hover:bg-primary-hover"
       >
         بازگشت به ابتدای فهرست
-      </a>
+      </Link>
     </section>
   );
 }
