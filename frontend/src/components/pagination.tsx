@@ -16,14 +16,14 @@ export function Pagination({ currentPage, totalPages, query }: PaginationProps) 
   const hasPrevious = currentPage > 1;
   const hasNext = currentPage < totalPages;
   const controlClasses =
-    "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-bold text-foreground shadow-card transition-colors hover:border-primary/35 hover:bg-primary-soft/55 hover:text-primary";
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-surface-muted px-4 text-sm font-bold text-foreground transition-colors hover:bg-primary-soft hover:text-primary";
   const disabledClasses =
-    "inline-flex min-h-11 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-border/75 bg-surface-muted/60 px-4 text-sm font-bold text-muted-foreground opacity-60";
+    "inline-flex min-h-11 cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-surface-muted/55 px-4 text-sm font-bold text-muted-foreground opacity-55";
 
   return (
     <nav
       aria-label="صفحه‌بندی محصولات"
-      className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface-muted/55 p-3 sm:mt-14 sm:p-4"
+      className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-border/75 pt-6 sm:mt-14"
     >
       {hasPrevious ? (
         <Link

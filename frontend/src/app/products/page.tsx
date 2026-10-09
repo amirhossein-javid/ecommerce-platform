@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { CatalogControls } from "@/components/catalog-controls";
+import {
+  CatalogDiscovery,
+  CatalogSidebar,
+  CatalogToolbar,
+} from "@/components/catalog-controls";
 import { Container } from "@/components/container";
 import { Pagination } from "@/components/pagination";
 import { ProductCard } from "@/components/product-card";
@@ -33,9 +37,9 @@ type ProductsPageProps = {
 
 function EmptyCatalog({ filtered }: { filtered: boolean }) {
   return (
-    <section className="rounded-2xl border border-dashed border-border bg-surface px-5 py-14 text-center shadow-card sm:px-8 sm:py-20">
+    <section className="rounded-xl bg-surface-muted/55 px-5 py-14 text-center sm:px-8 sm:py-20">
       <div
-        className="mx-auto flex size-16 items-center justify-center rounded-xl border border-border bg-surface-muted text-primary"
+        className="mx-auto flex size-16 items-center justify-center rounded-xl bg-primary-soft/70 text-primary"
         aria-hidden="true"
       >
         <svg viewBox="0 0 48 48" fill="none" className="size-7">
@@ -64,7 +68,7 @@ function EmptyCatalog({ filtered }: { filtered: boolean }) {
       {filtered ? (
         <Link
           href="/products"
-          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground shadow-card transition-colors hover:bg-primary-hover"
+          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           نمایش همهٔ محصولات
         </Link>
@@ -83,7 +87,7 @@ function CatalogError({
   return (
     <section
       role="alert"
-      className="rounded-2xl border border-destructive/25 bg-destructive-soft/45 px-5 py-12 text-center shadow-card sm:px-8 sm:py-16"
+      className="rounded-xl bg-destructive-soft/45 px-5 py-12 text-center sm:px-8 sm:py-16"
     >
       <div
         aria-hidden="true"
@@ -103,7 +107,7 @@ function CatalogError({
       </p>
       <Link
         href={returnHref}
-        className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground shadow-card transition-colors hover:bg-primary-hover"
+        className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
       >
         {missingPage ? "بازگشت به صفحهٔ اول نتایج" : "تلاش دوباره"}
       </Link>
@@ -185,40 +189,52 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   return (
     <Container className="py-7 sm:py-10 lg:py-14">
       <CatalogHeading />
-      <CatalogControls
-        categories={categories}
-        categoriesUnavailable={categoriesUnavailable}
-        query={query}
-        resultCount={products.count}
-      />
+      <CatalogDiscovery categories={categories} query={query} />
 
-      {products.results.length === 0 ? (
-        <div className="mt-7 sm:mt-9">
-          <EmptyCatalog
-            filtered={Boolean(
-              query.search ||
-                query.category ||
-                query.ordering !== DEFAULT_PRODUCT_ORDERING,
-            )}
-          />
-        </div>
-      ) : (
-        <>
-          <section
-            aria-label="فهرست محصولات"
-            className="mt-7 grid min-w-0 grid-cols-1 gap-x-6 gap-y-8 sm:mt-9 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-7 lg:gap-y-10"
-          >
-            {products.results.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </section>
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
+      <div className="mt-7 grid min-w-0 gap-7 lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start xl:gap-8">
+        <CatalogSidebar
+          categories={categories}
+          categoriesUnavailable={categoriesUnavailable}
+          query={query}
+        />
+
+        <div className="min-w-0">
+          <CatalogToolbar
+            categories={categories}
+            categoriesUnavailable={categoriesUnavailable}
             query={query}
+            resultCount={products.count}
           />
-        </>
-      )}
+
+          {products.results.length === 0 ? (
+            <div className="mt-7 sm:mt-9">
+              <EmptyCatalog
+                filtered={Boolean(
+                  query.search ||
+                    query.category ||
+                    query.ordering !== DEFAULT_PRODUCT_ORDERING,
+                )}
+              />
+            </div>
+          ) : (
+            <>
+              <section
+                aria-label="فهرست محصولات"
+                className="mt-7 grid min-w-0 grid-cols-1 gap-x-3 gap-y-8 min-[360px]:grid-cols-2 sm:gap-x-5 sm:gap-y-10 xl:grid-cols-3 xl:gap-x-6"
+              >
+                {products.results.map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+              </section>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                query={query}
+              />
+            </>
+          )}
+        </div>
+      </div>
     </Container>
   );
 }

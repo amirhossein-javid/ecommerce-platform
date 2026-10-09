@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { MobileFilterDrawer } from "@/components/mobile-filter-drawer";
 import type { Category } from "@/lib/catalog-api";
 import {
   catalogHref,
@@ -23,100 +24,87 @@ const ORDERING_OPTIONS: Array<{ value: ProductOrdering; label: string }> = [
   { value: "-price", label: "بیشترین قیمت" },
 ];
 
-const fieldClasses =
-  "min-h-12 w-full min-w-0 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-foreground shadow-[0_1px_0_rgb(var(--shadow-color)/0.03)] transition-colors hover:border-primary/35";
-
-function FilterFields({
+function CategoryLinks({
   categories,
   categoriesUnavailable,
   query,
-  idPrefix,
-}: Omit<CatalogControlsProps, "resultCount"> & { idPrefix: string }) {
+}: Omit<CatalogControlsProps, "resultCount">) {
+  if (categoriesUnavailable) {
+    return (
+      <p className="rounded-lg bg-surface-muted px-3 py-4 text-sm leading-7 text-muted-foreground">
+        دسته‌بندی‌ها موقتاً در دسترس نیستند. جست‌وجو و مرتب‌سازی همچنان قابل
+        استفاده است.
+      </p>
+    );
+  }
+
+  const linkClasses =
+    "flex min-h-11 items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors";
+
   return (
-    <>
-      {query.search ? <input type="hidden" name="search" value={query.search} /> : null}
-      {categoriesUnavailable && query.category ? (
-        <input type="hidden" name="category" value={query.category} />
-      ) : null}
-      <div className="min-w-0">
-        <label
-          htmlFor={`${idPrefix}-category`}
-          className="mb-1.5 block text-xs font-bold text-muted-foreground"
-        >
-          دسته‌بندی
-        </label>
-        <select
-          id={`${idPrefix}-category`}
-          name="category"
-          defaultValue={query.category}
-          disabled={categoriesUnavailable}
-          className={fieldClasses}
-        >
-          {categoriesUnavailable ? (
-            <option value={query.category}>
-              دسته‌بندی‌ها موقتاً در دسترس نیستند
-            </option>
-          ) : (
-            <>
-              <option value="">همهٔ دسته‌بندی‌ها</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.slug}>
-                  {category.parent
-                    ? `${category.parent.name} — ${category.name}`
-                    : category.name}
-                </option>
-              ))}
-            </>
-          )}
-        </select>
-      </div>
+    <nav aria-label="فیلتر دسته‌بندی">
+      <ul className="space-y-1">
+        <li>
+          <Link
+            href={catalogHref(query, { category: "", page: 1 })}
+            aria-current={query.category ? undefined : "page"}
+            className={`${linkClasses} ${
+              query.category
+                ? "text-muted-foreground hover:bg-primary-soft/60 hover:text-primary"
+                : "bg-primary text-primary-foreground"
+            }`}
+          >
+            همهٔ محصولات
+          </Link>
+        </li>
+        {categories.map((category) => {
+          const isActive = category.slug === query.category;
 
-      <div className="min-w-0">
-        <label
-          htmlFor={`${idPrefix}-ordering`}
-          className="mb-1.5 block text-xs font-bold text-muted-foreground"
-        >
-          مرتب‌سازی
-        </label>
-        <select
-          id={`${idPrefix}-ordering`}
-          name="ordering"
-          defaultValue={query.ordering}
-          className={fieldClasses}
-        >
-          {ORDERING_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <button
-        type="submit"
-        className="min-h-12 self-end rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground shadow-card transition-colors hover:bg-primary-hover"
-      >
-        اعمال
-      </button>
-    </>
+          return (
+            <li key={category.id}>
+              <Link
+                href={catalogHref(query, {
+                  category: category.slug,
+                  page: 1,
+                })}
+                aria-current={isActive ? "page" : undefined}
+                className={`${linkClasses} ${
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-primary-soft/60 hover:text-primary"
+                }`}
+              >
+                <span className="min-w-0 truncate">{category.name}</span>
+                {category.parent ? (
+                  <span
+                    className={`shrink-0 text-[0.68rem] ${
+                      isActive
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground/75"
+                    }`}
+                  >
+                    {category.parent.name}
+                  </span>
+                ) : null}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }
 
-export function CatalogControls({
+export function CatalogDiscovery({
   categories,
-  categoriesUnavailable,
   query,
-  resultCount,
-}: CatalogControlsProps) {
+}: Pick<CatalogControlsProps, "categories" | "query">) {
   const selectedCategory = categories.find(
     (category) => category.slug === query.category,
   );
   const selectedOrdering = ORDERING_OPTIONS.find(
     (option) => option.value === query.ordering,
   );
-  const activeFilterCount =
-    Number(Boolean(query.category)) +
-    Number(query.ordering !== DEFAULT_PRODUCT_ORDERING);
   const hasDiscoveryState = Boolean(
     query.search || query.category || query.ordering !== DEFAULT_PRODUCT_ORDERING,
   );
@@ -148,12 +136,12 @@ export function CatalogControls({
   ].filter((item): item is NonNullable<typeof item> => item !== null);
 
   return (
-    <section aria-labelledby="catalog-discovery-title" className="mt-7 sm:mt-9">
+    <section aria-labelledby="catalog-discovery-title" className="mt-6 sm:mt-8">
       <h2 id="catalog-discovery-title" className="sr-only">
-        جست‌وجو و پالایش محصولات
+        جست‌وجوی محصولات
       </h2>
 
-      <div className="rounded-2xl border border-border bg-surface p-4 shadow-card sm:p-5 lg:p-6">
+      <div className="rounded-xl bg-surface-muted/60 p-2 sm:p-2.5">
         <form action="/products" method="get" role="search">
           {query.category ? (
             <input type="hidden" name="category" value={query.category} />
@@ -164,11 +152,11 @@ export function CatalogControls({
           <label htmlFor="catalog-search" className="sr-only">
             جست‌وجوی محصولات
           </label>
-          <div className="flex min-w-0 flex-col gap-3 sm:flex-row">
+          <div className="flex min-w-0 gap-2">
             <div className="relative min-w-0 flex-1">
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 start-4 grid place-items-center text-muted-foreground"
+                className="pointer-events-none absolute inset-y-0 start-3.5 grid place-items-center text-muted-foreground"
               >
                 <svg viewBox="0 0 24 24" fill="none" className="size-5">
                   <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
@@ -181,95 +169,177 @@ export function CatalogControls({
                 name="search"
                 defaultValue={query.search}
                 maxLength={MAX_CATALOG_SEARCH_LENGTH}
-                placeholder="جست‌وجو در نام و توضیحات محصولات"
+                placeholder="جست‌وجو در محصولات"
                 enterKeyHint="search"
-                className={`${fieldClasses} ps-12 sm:text-base`}
+                className="min-h-12 w-full min-w-0 rounded-lg border border-border/80 bg-surface ps-11 pe-3 text-sm font-semibold text-foreground transition-colors placeholder:text-muted-foreground/80 hover:border-primary/30 sm:text-base"
               />
             </div>
             <button
               type="submit"
-              className="min-h-12 shrink-0 rounded-lg bg-primary px-6 text-sm font-bold text-primary-foreground shadow-card transition-colors hover:bg-primary-hover"
+              className="min-h-12 shrink-0 rounded-lg bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover sm:px-6"
             >
               جست‌وجو
             </button>
           </div>
         </form>
+      </div>
 
-        <form
-          action="/products"
-          method="get"
-          aria-label="فیلتر و مرتب‌سازی محصولات"
-          className="mt-5 hidden grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-4 border-t border-border pt-5 sm:grid"
-        >
-          <FilterFields
+      {hasDiscoveryState ? (
+        <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <ul
+            aria-label="انتخاب‌های فعال"
+            className="flex min-w-0 flex-wrap gap-2"
+          >
+            {activeItems.map((item) => (
+              <li key={item.key} className="min-w-0 max-w-full">
+                <Link
+                  href={item.href}
+                  aria-label={`حذف ${item.label}`}
+                  className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-lg bg-primary-soft/70 px-3 text-xs font-bold text-primary transition-colors hover:bg-primary-soft"
+                >
+                  <span className="truncate">{item.label}</span>
+                  <span aria-hidden="true" className="text-base leading-none">
+                    ×
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <Link
+            href="/products"
+            className="inline-flex min-h-10 w-fit items-center rounded-md px-2 text-sm font-bold text-primary transition-colors hover:bg-primary-soft/65"
+          >
+            پاک‌کردن همه
+          </Link>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export function CatalogSidebar({
+  categories,
+  categoriesUnavailable,
+  query,
+}: Omit<CatalogControlsProps, "resultCount">) {
+  return (
+    <aside aria-labelledby="catalog-sidebar-title" className="hidden lg:block">
+      <div className="sticky top-24 rounded-xl border border-border/75 bg-surface p-4">
+        <div className="mb-4 flex min-h-10 items-center justify-between border-b border-border/70 pb-3">
+          <h2
+            id="catalog-sidebar-title"
+            className="text-base font-extrabold text-foreground"
+          >
+            دسته‌بندی‌ها
+          </h2>
+          {query.category ? (
+            <Link
+              href={catalogHref(query, { category: "", page: 1 })}
+              className="rounded-md px-2 py-1 text-xs font-bold text-primary transition-colors hover:bg-primary-soft"
+            >
+              پاک‌کردن
+            </Link>
+          ) : null}
+        </div>
+        <CategoryLinks
+          categories={categories}
+          categoriesUnavailable={categoriesUnavailable}
+          query={query}
+        />
+      </div>
+    </aside>
+  );
+}
+
+export function CatalogToolbar({
+  categories,
+  categoriesUnavailable,
+  query,
+  resultCount,
+}: CatalogControlsProps) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3 border-y border-border/75 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
+        <MobileFilterDrawer activeCount={Number(Boolean(query.category))}>
+          <CategoryLinks
             categories={categories}
             categoriesUnavailable={categoriesUnavailable}
             query={query}
-            idPrefix="desktop"
           />
-        </form>
-
-        <details className="mt-4 border-t border-border pt-4 sm:hidden">
-          <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-1 text-sm font-extrabold text-foreground">
-            <span>فیلتر و مرتب‌سازی</span>
-            {activeFilterCount > 0 ? (
-              <span className="grid min-w-7 place-items-center rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary">
-                {activeFilterCount.toLocaleString("fa-IR")}
-              </span>
-            ) : null}
-          </summary>
-          <form
-            action="/products"
-            method="get"
-            aria-label="فیلتر و مرتب‌سازی محصولات در موبایل"
-            className="mt-3 grid gap-4 rounded-xl bg-surface-muted/55 p-4"
-          >
-            <FilterFields
-              categories={categories}
-              categoriesUnavailable={categoriesUnavailable}
-              query={query}
-              idPrefix="mobile"
-            />
-          </form>
-        </details>
-      </div>
-
-      <div className="mt-6 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground" aria-live="polite">
-          <strong className="text-base font-black text-foreground">
+        </MobileFilterDrawer>
+        <p className="shrink-0 text-sm text-muted-foreground" aria-live="polite">
+          <strong className="font-black text-foreground">
             {resultCount.toLocaleString("fa-IR")}
           </strong>{" "}
-          محصول پیدا شد
+          محصول
         </p>
-
-        {hasDiscoveryState ? (
-          <Link
-            href="/products"
-            className="inline-flex min-h-11 w-fit items-center rounded-lg px-2 text-sm font-bold text-primary transition-colors hover:bg-primary-soft/65"
-          >
-            پاک‌کردن همهٔ انتخاب‌ها
-          </Link>
-        ) : null}
       </div>
 
-      {activeItems.length > 0 ? (
-        <ul aria-label="انتخاب‌های فعال" className="mt-3 flex min-w-0 flex-wrap gap-2">
-          {activeItems.map((item) => (
-            <li key={item.key} className="min-w-0 max-w-full">
-              <Link
-                href={item.href}
-                aria-label={`حذف ${item.label}`}
-                className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-primary/15 bg-primary-soft/60 px-3 text-xs font-bold text-primary transition-colors hover:border-primary/30 hover:bg-primary-soft"
-              >
-                <span className="truncate">{item.label}</span>
-                <span aria-hidden="true" className="text-base leading-none">
-                  ×
-                </span>
-              </Link>
-            </li>
+      <form
+        action="/products"
+        method="get"
+        aria-label="مرتب‌سازی محصولات"
+        className="flex min-w-0 items-center gap-2 lg:hidden"
+      >
+        {query.search ? (
+          <input type="hidden" name="search" value={query.search} />
+        ) : null}
+        {query.category ? (
+          <input type="hidden" name="category" value={query.category} />
+        ) : null}
+        <label
+          htmlFor="mobile-ordering"
+          className="shrink-0 text-xs font-bold text-muted-foreground"
+        >
+          ترتیب
+        </label>
+        <select
+          id="mobile-ordering"
+          name="ordering"
+          defaultValue={query.ordering}
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-sm font-semibold text-foreground"
+        >
+          {ORDERING_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
           ))}
+        </select>
+        <button
+          type="submit"
+          className="min-h-11 shrink-0 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
+        >
+          اعمال
+        </button>
+      </form>
+
+      <nav aria-label="مرتب‌سازی محصولات" className="hidden lg:block">
+        <ul className="flex items-center gap-1">
+          <li className="px-2 text-xs font-bold text-muted-foreground">ترتیب:</li>
+          {ORDERING_OPTIONS.map((option) => {
+            const isActive = option.value === query.ordering;
+
+            return (
+              <li key={option.value}>
+                <Link
+                  href={catalogHref(query, {
+                    ordering: option.value,
+                    page: 1,
+                  })}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`inline-flex min-h-10 items-center rounded-lg px-3 text-xs font-bold transition-colors ${
+                    isActive
+                      ? "bg-primary-soft text-primary"
+                      : "text-muted-foreground hover:bg-surface-muted hover:text-primary"
+                  }`}
+                >
+                  {option.label}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
-      ) : null}
-    </section>
+      </nav>
+    </div>
   );
 }
