@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AccountSidebar } from "@/components/account-sidebar";
 import { Container } from "@/components/container";
 import { ProfileForm } from "@/components/profile-form";
 import { getCustomerSession } from "@/lib/auth-session";
@@ -60,18 +61,7 @@ export default async function AccountPage() {
       </header>
 
       <div className="grid min-w-0 gap-7 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-10">
-        <aside className="rounded-xl bg-primary-soft/45 p-4 lg:sticky lg:top-28" aria-label="بخش‌های حساب کاربری">
-          <div className="border-b border-primary/10 px-2 pb-4">
-            <p className="truncate font-black text-foreground">{displayName}</p>
-            <p className="mt-1 truncate text-xs text-muted-foreground" dir="ltr">{customer.email}</p>
-          </div>
-          <nav className="mt-3" aria-label="ناوبری حساب">
-            <Link href="/account" aria-current="page" className="flex min-h-11 items-center gap-3 rounded-lg bg-surface px-3 text-sm font-bold text-primary shadow-[0_1px_2px_rgb(var(--shadow-color)/0.05)]">
-              <span aria-hidden="true" className="grid size-7 place-items-center rounded-md bg-primary-soft">●</span>
-              اطلاعات حساب
-            </Link>
-          </nav>
-        </aside>
+        <AccountSidebar customer={customer} active="profile" />
 
         <section className="min-w-0 rounded-xl border border-border/75 bg-surface p-5 sm:p-7 lg:p-8" aria-labelledby="profile-title">
           <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/70 pb-5">

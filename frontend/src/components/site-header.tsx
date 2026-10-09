@@ -69,7 +69,7 @@ export async function SiteHeader() {
               >
                 <Link
                   href={item.href}
-                  className="relative inline-flex min-h-11 items-center rounded-md px-3 text-sm font-semibold text-muted-foreground transition-colors after:absolute after:inset-x-3 after:bottom-1 after:h-px after:origin-center after:scale-x-0 after:bg-primary after:transition-transform hover:bg-primary-soft/55 hover:text-primary hover:after:scale-x-100 sm:px-4 sm:text-[0.95rem]"
+                  className="relative inline-flex min-h-11 items-center rounded-md px-2 text-sm font-semibold text-muted-foreground transition-colors after:absolute after:inset-x-2 after:bottom-1 after:h-px after:origin-center after:scale-x-0 after:bg-primary after:transition-transform hover:bg-primary-soft/55 hover:text-primary hover:after:scale-x-100 sm:px-4 sm:text-[0.95rem] sm:after:inset-x-3"
                 >
                   {item.label}
                 </Link>

@@ -8,12 +8,19 @@ import {
   type ProfileUpdateInput,
   type RegistrationInput,
 } from "@/lib/auth-contract";
+import {
+  type AddressInput,
+  type CustomerAddress,
+  isCustomerAddress,
+  isCustomerAddressList,
+} from "@/lib/address-contract";
 
 const LOGIN_PATH = "/api/v1/auth/login/";
 const REGISTER_PATH = "/api/v1/auth/register/";
 const REFRESH_PATH = "/api/v1/auth/token/refresh/";
 const LOGOUT_PATH = "/api/v1/auth/logout/";
 const PROFILE_PATH = "/api/v1/account/profile/";
+const ADDRESSES_PATH = "/api/v1/account/addresses/";
 
 export class AuthApiError extends Error {
   constructor(
@@ -141,4 +148,65 @@ export async function updateCustomerProfile(
     throw new AuthApiError();
   }
   return payload;
+}
+
+export async function fetchCustomerAddresses(
+  access: string,
+): Promise<CustomerAddress[]> {
+  const response = await requestDjango(ADDRESSES_PATH, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${access}` },
+  });
+  const payload = await parsePayload(response);
+  if (!isCustomerAddressList(payload)) throw new AuthApiError();
+  return payload;
+}
+
+async function requestAddress(
+  path: string,
+  access: string,
+  init: RequestInit,
+): Promise<CustomerAddress> {
+  const response = await requestDjango(path, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${access}`,
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...init.headers,
+    },
+  });
+  const payload = await parsePayload(response);
+  if (!isCustomerAddress(payload)) throw new AuthApiError();
+  return payload;
+}
+
+export function createCustomerAddress(access: string, input: AddressInput) {
+  return requestAddress(ADDRESSES_PATH, access, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateCustomerAddress(
+  access: string,
+  id: number,
+  input: AddressInput,
+) {
+  return requestAddress(`${ADDRESSES_PATH}${id}/`, access, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteCustomerAddress(access: string, id: number) {
+  await requestDjango(`${ADDRESSES_PATH}${id}/`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${access}` },
+  });
+}
+
+export function setDefaultCustomerAddress(access: string, id: number) {
+  return requestAddress(`${ADDRESSES_PATH}${id}/set-default/`, access, {
+    method: "POST",
+  });
 }
