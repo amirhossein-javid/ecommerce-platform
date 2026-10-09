@@ -1,15 +1,14 @@
 import Link from "next/link";
 
+import { catalogHref, type CatalogQuery } from "@/lib/catalog-query";
+
 type PaginationProps = {
   currentPage: number;
   totalPages: number;
+  query: CatalogQuery;
 };
 
-function pageHref(page: number) {
-  return page === 1 ? "/products" : `/products?page=${page}`;
-}
-
-export function Pagination({ currentPage, totalPages }: PaginationProps) {
+export function Pagination({ currentPage, totalPages, query }: PaginationProps) {
   if (totalPages <= 1) {
     return null;
   }
@@ -28,7 +27,7 @@ export function Pagination({ currentPage, totalPages }: PaginationProps) {
     >
       {hasPrevious ? (
         <Link
-          href={pageHref(currentPage - 1)}
+          href={catalogHref(query, { page: currentPage - 1 })}
           rel="prev"
           className={controlClasses}
         >
@@ -48,7 +47,7 @@ export function Pagination({ currentPage, totalPages }: PaginationProps) {
 
       {hasNext ? (
         <Link
-          href={pageHref(currentPage + 1)}
+          href={catalogHref(query, { page: currentPage + 1 })}
           rel="next"
           className={controlClasses}
         >

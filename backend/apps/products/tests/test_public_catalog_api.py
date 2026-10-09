@@ -377,6 +377,41 @@ def test_product_list_orders_by_creation_time(api_client, categories):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "ordering",
+    ["price", "-price", "created_at", "-created_at"],
+)
+def test_product_list_ordering_uses_pk_as_a_stable_tiebreaker(
+    api_client,
+    categories,
+    ordering,
+):
+    category, _, _ = categories
+    products = [
+        create_product(category, f"tied-{index}", price="20.00") for index in range(3)
+    ]
+    Product.objects.filter(pk__in=[product.pk for product in products]).update(
+        created_at=products[0].created_at
+    )
+
+    first_page = api_client.get(
+        reverse("products:product-list"),
+        {"ordering": ordering, "page_size": 2},
+    )
+    second_page = api_client.get(
+        reverse("products:product-list"),
+        {"ordering": ordering, "page_size": 2, "page": 2},
+    )
+
+    assert first_page.status_code == status.HTTP_200_OK
+    assert second_page.status_code == status.HTTP_200_OK
+    assert [
+        item["id"]
+        for item in first_page.json()["results"] + second_page.json()["results"]
+    ] == [product.pk for product in products]
+
+
+@pytest.mark.django_db
 def test_product_list_is_paginated(api_client, categories):
     category, _, _ = categories
     for index in range(3):

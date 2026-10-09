@@ -1,5 +1,8 @@
 import "server-only";
 
+import type { CatalogQuery } from "@/lib/catalog-query";
+
+const CATEGORIES_PATH = "/api/v1/categories/";
 const PRODUCTS_PATH = "/api/v1/products/";
 
 export const PRODUCTS_PAGE_SIZE = 12;
@@ -9,6 +12,10 @@ export type CategorySummary = {
   id: number;
   name: string;
   slug: string;
+};
+
+export type Category = CategorySummary & {
+  parent: CategorySummary | null;
 };
 
 export type ProductImage = {
@@ -74,6 +81,15 @@ function isCategorySummary(value: unknown): value is CategorySummary {
     typeof category.name === "string" &&
     typeof category.slug === "string"
   );
+}
+
+function isCategory(value: unknown): value is Category {
+  if (!isCategorySummary(value)) {
+    return false;
+  }
+
+  const category = value as Category;
+  return category.parent === null || isCategorySummary(category.parent);
 }
 
 function isProductImage(value: unknown): value is ProductImage {
@@ -238,12 +254,9 @@ function withPublicDetailMediaUrls(
   };
 }
 
-export async function getProducts(page: number): Promise<ProductPage> {
+export async function getCategories(): Promise<Category[]> {
   const apiOrigin = getApiOrigin();
-  const url = new URL(PRODUCTS_PATH, apiOrigin);
-  url.searchParams.set("page", page.toString());
-  url.searchParams.set("page_size", PRODUCTS_PAGE_SIZE.toString());
-
+  const url = new URL(CATEGORIES_PATH, apiOrigin);
   let response: Response;
 
   try {
@@ -251,6 +264,52 @@ export async function getProducts(page: number): Promise<ProductPage> {
       headers: { Accept: "application/json" },
       next: { revalidate: CATALOG_REVALIDATE_SECONDS },
     });
+  } catch {
+    throw new CatalogApiError();
+  }
+
+  if (!response.ok) {
+    throw new CatalogApiError(response.status);
+  }
+
+  const data: unknown = await response.json();
+
+  if (!Array.isArray(data) || !data.every(isCategory)) {
+    throw new CatalogApiError();
+  }
+
+  return data;
+}
+
+export async function getProducts(query: CatalogQuery): Promise<ProductPage> {
+  const apiOrigin = getApiOrigin();
+  const url = new URL(PRODUCTS_PATH, apiOrigin);
+  url.searchParams.set("page", query.page.toString());
+  url.searchParams.set("page_size", PRODUCTS_PAGE_SIZE.toString());
+
+  if (query.search) {
+    url.searchParams.set("search", query.search);
+  }
+  if (query.category) {
+    url.searchParams.set("category", query.category);
+  }
+  url.searchParams.set("ordering", query.ordering);
+
+  let response: Response;
+
+  try {
+    response = await fetch(
+      url,
+      query.search || query.category
+        ? {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          }
+        : {
+            headers: { Accept: "application/json" },
+            next: { revalidate: CATALOG_REVALIDATE_SECONDS },
+          },
+    );
   } catch {
     throw new CatalogApiError();
   }

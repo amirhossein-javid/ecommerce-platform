@@ -1,15 +1,26 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
+import { CatalogControls } from "@/components/catalog-controls";
 import { Container } from "@/components/container";
 import { Pagination } from "@/components/pagination";
 import { ProductCard } from "@/components/product-card";
 import {
   CatalogApiError,
+  type Category,
+  getCategories,
   getProducts,
   type ProductPage,
   PRODUCTS_PAGE_SIZE,
 } from "@/lib/catalog-api";
+import {
+  catalogHref,
+  catalogQueryNeedsNormalization,
+  DEFAULT_PRODUCT_ORDERING,
+  parseCatalogQuery,
+  type RawCatalogSearchParams,
+} from "@/lib/catalog-query";
 
 export const metadata: Metadata = {
   title: "محصولات | فروشگاه",
@@ -17,21 +28,10 @@ export const metadata: Metadata = {
 };
 
 type ProductsPageProps = {
-  searchParams: Promise<{ page?: string | string[] }>;
+  searchParams: Promise<RawCatalogSearchParams>;
 };
 
-function parsePage(value: string | string[] | undefined) {
-  const candidate = Array.isArray(value) ? value[0] : value;
-
-  if (!candidate || !/^\d+$/.test(candidate)) {
-    return 1;
-  }
-
-  const page = Number(candidate);
-  return Number.isSafeInteger(page) && page > 0 ? page : 1;
-}
-
-function EmptyCatalog() {
+function EmptyCatalog({ filtered }: { filtered: boolean }) {
   return (
     <section className="rounded-2xl border border-dashed border-border bg-surface px-5 py-14 text-center shadow-card sm:px-8 sm:py-20">
       <div
@@ -54,16 +54,32 @@ function EmptyCatalog() {
         </svg>
       </div>
       <h2 className="mt-6 text-xl font-extrabold text-foreground sm:text-2xl">
-        هنوز محصولی برای نمایش نیست
+        {filtered ? "نتیجه‌ای پیدا نشد" : "هنوز محصولی برای نمایش نیست"}
       </h2>
       <p className="mx-auto mt-3 max-w-md leading-8 text-muted-foreground">
-        به‌محض اضافه‌شدن محصولات فعال، آن‌ها را در همین صفحه خواهید دید.
+        {filtered
+          ? "عبارت جست‌وجو یا انتخاب‌های فعلی را تغییر دهید و دوباره امتحان کنید."
+          : "به‌محض اضافه‌شدن محصولات فعال، آن‌ها را در همین صفحه خواهید دید."}
       </p>
+      {filtered ? (
+        <Link
+          href="/products"
+          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground shadow-card transition-colors hover:bg-primary-hover"
+        >
+          نمایش همهٔ محصولات
+        </Link>
+      ) : null}
     </section>
   );
 }
 
-function CatalogError({ missingPage }: { missingPage: boolean }) {
+function CatalogError({
+  missingPage,
+  returnHref,
+}: {
+  missingPage: boolean;
+  returnHref: string;
+}) {
   return (
     <section
       role="alert"
@@ -86,10 +102,10 @@ function CatalogError({ missingPage }: { missingPage: boolean }) {
           : "ارتباط با سرویس فروشگاه برقرار نشد. لطفاً کمی بعد دوباره تلاش کنید."}
       </p>
       <Link
-        href="/products"
+        href={returnHref}
         className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground shadow-card transition-colors hover:bg-primary-hover"
       >
-        بازگشت به ابتدای فهرست
+        {missingPage ? "بازگشت به صفحهٔ اول نتایج" : "تلاش دوباره"}
       </Link>
     </section>
   );
@@ -115,15 +131,34 @@ function CatalogHeading() {
 }
 
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
-  const { page: pageParam } = await searchParams;
-  const currentPage = parsePage(pageParam);
-  let products: ProductPage | null = null;
-  let requestError: unknown;
+  const rawSearchParams = await searchParams;
+  const query = parseCatalogQuery(rawSearchParams);
 
-  try {
-    products = await getProducts(currentPage);
-  } catch (error) {
-    requestError = error;
+  if (catalogQueryNeedsNormalization(rawSearchParams, query)) {
+    redirect(catalogHref(query));
+  }
+
+  const currentPage = query.page;
+  let products: ProductPage | null = null;
+  let categories: Category[] = [];
+  let requestError: unknown;
+  let categoriesUnavailable = false;
+
+  const [productsResult, categoriesResult] = await Promise.allSettled([
+    getProducts(query),
+    getCategories(),
+  ]);
+
+  if (productsResult.status === "fulfilled") {
+    products = productsResult.value;
+  } else {
+    requestError = productsResult.reason;
+  }
+
+  if (categoriesResult.status === "fulfilled") {
+    categories = categoriesResult.value;
+  } else {
+    categoriesUnavailable = true;
   }
 
   if (!products) {
@@ -135,6 +170,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             missingPage={
               requestError instanceof CatalogApiError && requestError.status === 404
             }
+            returnHref={catalogHref(query, { page: 1 })}
           />
         </div>
       </Container>
@@ -149,22 +185,38 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   return (
     <Container className="py-7 sm:py-10 lg:py-14">
       <CatalogHeading />
+      <CatalogControls
+        categories={categories}
+        categoriesUnavailable={categoriesUnavailable}
+        query={query}
+        resultCount={products.count}
+      />
 
       {products.results.length === 0 ? (
-        <div className="mt-8 sm:mt-10">
-          <EmptyCatalog />
+        <div className="mt-7 sm:mt-9">
+          <EmptyCatalog
+            filtered={Boolean(
+              query.search ||
+                query.category ||
+                query.ordering !== DEFAULT_PRODUCT_ORDERING,
+            )}
+          />
         </div>
       ) : (
         <>
           <section
             aria-label="فهرست محصولات"
-            className="mt-8 grid min-w-0 grid-cols-1 gap-x-6 gap-y-8 sm:mt-10 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-7 lg:gap-y-10"
+            className="mt-7 grid min-w-0 grid-cols-1 gap-x-6 gap-y-8 sm:mt-9 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-7 lg:gap-y-10"
           >
             {products.results.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
           </section>
-          <Pagination currentPage={currentPage} totalPages={totalPages} />
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            query={query}
+          />
         </>
       )}
     </Container>

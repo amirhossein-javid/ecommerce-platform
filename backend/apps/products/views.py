@@ -20,6 +20,14 @@ class ProductPagination(PageNumberPagination):
     max_page_size = 100
 
 
+class DeterministicOrderingFilter(filters.OrderingFilter):
+    def get_ordering(self, request, queryset, view):
+        ordering = super().get_ordering(request, queryset, view)
+        if ordering and not any(field.lstrip("-") == "pk" for field in ordering):
+            return (*ordering, "pk")
+        return ordering
+
+
 @extend_schema_view(get=extend_schema(tags=["Catalog"]))
 class CategoryListView(ListAPIView):
     authentication_classes = ()
@@ -53,7 +61,7 @@ class ProductListView(ListAPIView):
     permission_classes = (AllowAny,)
     serializer_class = ProductListSerializer
     pagination_class = ProductPagination
-    filter_backends = (filters.SearchFilter, filters.OrderingFilter)
+    filter_backends = (filters.SearchFilter, DeterministicOrderingFilter)
     search_fields = ("name", "description")
     ordering_fields = ("price", "created_at")
     ordering = ("-created_at", "pk")
