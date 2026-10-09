@@ -11,8 +11,8 @@ type ProductGalleryProps = {
 
 function GalleryPlaceholder() {
   return (
-    <div className="flex size-full flex-col items-center justify-center gap-4 bg-surface-muted px-6 text-center text-muted-foreground">
-      <span className="flex size-20 items-center justify-center rounded-2xl border border-border bg-surface/75">
+    <div className="flex size-full flex-col items-center justify-center gap-4 bg-surface-muted/65 px-6 text-center text-muted-foreground">
+      <span className="flex size-20 items-center justify-center rounded-xl bg-surface/80">
         <svg
           aria-hidden="true"
           viewBox="0 0 48 48"
@@ -50,7 +50,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
     return (
       <section
         aria-label="تصاویر محصول"
-        className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card"
+        className="overflow-hidden rounded-xl border border-border/80 bg-surface"
       >
         <div className="aspect-square">
           <GalleryPlaceholder />
@@ -73,15 +73,15 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
 
   return (
     <section aria-label="گالری تصاویر محصول" className="min-w-0">
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
-        <div className="aspect-square bg-surface-muted">
+      <div className="relative overflow-hidden rounded-xl border border-border/80 bg-surface">
+        <div className="aspect-square bg-surface">
           {/* The media origin remains deployment-owned, so native images avoid a speculative allowlist. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={activeImage.id}
             src={activeImage.image}
             alt={imageAlt}
-            className="size-full object-cover"
+            className="size-full object-contain p-4 sm:p-6"
             loading={activeIndex === primaryIndex ? "eager" : "lazy"}
           />
         </div>
@@ -91,7 +91,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
             <button
               type="button"
               onClick={showPrevious}
-              className="pointer-events-auto grid size-11 place-items-center rounded-full border border-border/90 bg-surface/95 text-xl text-foreground shadow-card transition-colors hover:bg-primary hover:text-primary-foreground"
+              className="pointer-events-auto grid size-11 place-items-center rounded-lg border border-border/90 bg-surface/95 text-xl text-foreground shadow-card transition-colors hover:bg-primary hover:text-primary-foreground"
               aria-label="تصویر قبلی"
             >
               <span aria-hidden="true">→</span>
@@ -99,7 +99,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
             <button
               type="button"
               onClick={showNext}
-              className="pointer-events-auto grid size-11 place-items-center rounded-full border border-border/90 bg-surface/95 text-xl text-foreground shadow-card transition-colors hover:bg-primary hover:text-primary-foreground"
+              className="pointer-events-auto grid size-11 place-items-center rounded-lg border border-border/90 bg-surface/95 text-xl text-foreground shadow-card transition-colors hover:bg-primary hover:text-primary-foreground"
               aria-label="تصویر بعدی"
             >
               <span aria-hidden="true">←</span>
@@ -119,7 +119,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
           className="mt-4 overflow-x-auto pb-1"
           aria-label="انتخاب تصویر محصول"
         >
-          <div className="flex w-max gap-3">
+          <div className="flex w-max gap-2.5">
             {images.map((image, index) => {
               const thumbnailAlt =
                 image.alt_text ||
@@ -132,7 +132,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                   onClick={() => setActiveIndex(index)}
                   aria-label={`نمایش ${thumbnailAlt}`}
                   aria-pressed={index === activeIndex}
-                  className={`size-20 shrink-0 overflow-hidden rounded-lg border-2 bg-surface transition-[border-color,opacity] sm:size-24 ${
+                  className={`size-16 shrink-0 overflow-hidden rounded-lg border-2 bg-surface transition-[border-color,opacity] sm:size-20 ${
                     index === activeIndex
                       ? "border-primary"
                       : "border-transparent opacity-65 hover:border-border hover:opacity-100"
@@ -142,7 +142,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                   <img
                     src={image.image}
                     alt=""
-                    className="size-full object-cover"
+                    className="size-full object-contain p-1"
                     loading="lazy"
                   />
                 </button>
