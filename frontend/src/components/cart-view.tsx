@@ -16,6 +16,7 @@ import { formatToman } from "@/lib/format-price";
 type CartViewProps = {
   initialCart: Cart;
   initialMergeState?: "pending" | "unavailable";
+  checkoutState: "customer" | "guest" | "blocked";
 };
 
 function CartImagePlaceholder() {
@@ -62,7 +63,11 @@ async function responseError(response: Response) {
   }
 }
 
-export function CartView({ initialCart, initialMergeState }: CartViewProps) {
+export function CartView({
+  initialCart,
+  initialMergeState,
+  checkoutState,
+}: CartViewProps) {
   const router = useRouter();
   const [cart, setCart] = useState(initialCart);
   const [pendingItem, setPendingItem] = useState<number | null>(null);
@@ -399,9 +404,25 @@ export function CartView({ initialCart, initialMergeState }: CartViewProps) {
             </p>
           )}
 
+          {!hasUnavailableItems && checkoutState !== "blocked" ? (
+            <Link
+              href={checkoutState === "customer" ? "/checkout" : "/login"}
+              className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-primary px-5 text-sm font-extrabold text-primary-foreground transition-colors hover:bg-primary-hover"
+            >
+              {checkoutState === "customer"
+                ? "ادامه و ثبت سفارش"
+                : "ورود برای ثبت سفارش"}
+            </Link>
+          ) : null}
+          {checkoutState === "blocked" ? (
+            <p className="mt-4 rounded-lg bg-destructive-soft/60 px-3 py-3 text-xs font-semibold leading-6 text-destructive">
+              وضعیت حساب برای ثبت سفارش قابل تأیید نیست. کمی بعد دوباره تلاش
+              کنید.
+            </p>
+          ) : null}
           <Link
             href="/products"
-            className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-primary px-5 text-sm font-extrabold text-primary-foreground transition-colors hover:bg-primary-hover"
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-surface-muted hover:text-primary"
           >
             ادامهٔ خرید
           </Link>

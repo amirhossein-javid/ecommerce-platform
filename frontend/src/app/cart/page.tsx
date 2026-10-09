@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { CartView } from "@/components/cart-view";
 import { Container } from "@/components/container";
+import { getCustomerSession } from "@/lib/auth-session";
 import { getCurrentCart } from "@/lib/cart-api";
 
 export const metadata: Metadata = {
@@ -44,6 +45,7 @@ type CartPageProps = {
 
 export default async function CartPage({ searchParams }: CartPageProps) {
   let cart;
+  const session = await getCustomerSession();
 
   try {
     cart = await getCurrentCart();
@@ -73,7 +75,17 @@ export default async function CartPage({ searchParams }: CartPageProps) {
           تعداد کالاها، وضعیت موجودی و جمع قیمت را پیش از ادامه مرور کنید.
         </p>
       </header>
-      <CartView initialCart={cart} initialMergeState={initialMergeState} />
+      <CartView
+        initialCart={cart}
+        initialMergeState={initialMergeState}
+        checkoutState={
+          session.state === "customer"
+            ? "customer"
+            : session.state === "guest" || session.state === "invalid"
+              ? "guest"
+              : "blocked"
+        }
+      />
     </Container>
   );
 }
