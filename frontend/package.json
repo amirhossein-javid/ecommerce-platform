@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types src/lib/cart-contract.test.mts src/lib/cart-security.test.mts"
+    "test": "node --test --experimental-strip-types src/lib/*.test.mts"
   },
   "dependencies": {
     "next": "16.3.8",
