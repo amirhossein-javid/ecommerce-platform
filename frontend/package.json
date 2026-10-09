@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types src/lib/cart-contract.test.mts src/lib/cart-security.test.mts"
   },
   "dependencies": {
     "next": "16.3.8",

@@ -18,3 +18,19 @@ export function formatToman(priceInRials: string) {
 
   return `${formattedTomans} تومان و ${remainingRials.toLocaleString("fa-IR")} ریال`;
 }
+
+/** Multiplies a whole-rial price for presentation without binary floating point. */
+export function multiplyWholeRialPrice(
+  priceInRials: string,
+  quantity: number,
+) {
+  if (
+    !WHOLE_RIAL_PATTERN.test(priceInRials) ||
+    !Number.isSafeInteger(quantity) ||
+    quantity < 1
+  ) {
+    return null;
+  }
+
+  return (BigInt(priceInRials) * BigInt(quantity)).toString();
+}

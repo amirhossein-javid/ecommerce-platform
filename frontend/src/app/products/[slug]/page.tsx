@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AddToCartButton } from "@/components/add-to-cart-button";
 import { Container } from "@/components/container";
 import { ProductGallery } from "@/components/product-gallery";
 import {
@@ -258,11 +259,20 @@ export default async function ProductDetailPage({
               </p>
               <p className="mt-1 text-xs leading-6 text-muted-foreground">
                 {product.in_stock
-                  ? "امکان سفارش پس از فعال‌شدن سبد خرید فراهم می‌شود."
+                  ? "این محصول برای افزودن به سبد خرید در دسترس است."
                   : "این محصول فعلاً قابل سفارش نیست."}
               </p>
             </div>
           </div>
+
+          {product.in_stock ? (
+            <div className="mt-6 border-t border-border/70 pt-6">
+              <AddToCartButton
+                productPrice={product.price}
+                productSlug={product.slug}
+              />
+            </div>
+          ) : null}
         </aside>
       </div>
     </Container>

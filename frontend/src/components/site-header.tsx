@@ -1,13 +1,23 @@
 import Link from "next/link";
 
 import { Container } from "@/components/container";
+import { getCurrentGuestCart } from "@/lib/cart-api";
+import { getCartItemCount } from "@/lib/cart-contract";
 
 const navigation = [
   { href: "/", label: "خانه" },
   { href: "/products", label: "محصولات" },
 ];
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  let cartItemCount = 0;
+
+  try {
+    cartItemCount = getCartItemCount(await getCurrentGuestCart());
+  } catch {
+    // Keep global navigation available when the cart service is temporarily down.
+  }
+
   return (
     <header className="sticky top-0 z-30 border-b border-border/80 bg-surface/95 backdrop-blur-sm">
       <Container className="flex min-h-[4.75rem] items-center justify-between gap-3 py-2 sm:min-h-20">
@@ -59,6 +69,34 @@ export function SiteHeader() {
                 </Link>
               </li>
             ))}
+            <li>
+              <Link
+                href="/cart"
+                aria-label={`سبد خرید، ${cartItemCount.toLocaleString("fa-IR")} کالا`}
+                className="relative inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-primary-soft/55 hover:text-primary sm:px-4 sm:text-[0.95rem]"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  className="size-5"
+                >
+                  <path
+                    d="M4 5h2l1.5 9h9.75l1.5-6H7M10 18.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm8 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="hidden sm:inline">سبد خرید</span>
+                {cartItemCount > 0 ? (
+                  <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 py-0.5 text-[0.65rem] font-black leading-4 text-primary-foreground">
+                    {cartItemCount.toLocaleString("fa-IR")}
+                  </span>
+                ) : null}
+              </Link>
+            </li>
           </ul>
         </nav>
       </Container>
