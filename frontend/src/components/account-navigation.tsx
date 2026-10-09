@@ -23,26 +23,39 @@ function UserIcon() {
   );
 }
 
-export function AccountNavigation({ label }: { label?: string }) {
+type AccountNavigationProps = {
+  label?: string;
+  state: "guest" | "customer" | "missing-profile" | "invalid" | "upstream-error";
+};
+
+export function AccountNavigation({ label, state }: AccountNavigationProps) {
   const router = useRouter();
   const lock = useRef(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
-  if (!label) {
+  if (state === "guest" || state === "invalid") {
+    const needsLoginAgain = state === "invalid";
     return (
       <Link
         href="/login"
         className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-primary/35 bg-surface px-2.5 text-sm font-bold text-primary shadow-[0_1px_2px_rgb(var(--shadow-color)/0.04)] transition-[color,background-color,border-color,transform] hover:border-primary/60 hover:bg-primary-soft/55 active:scale-[0.98] active:bg-primary-soft sm:px-3"
       >
         <UserIcon />
-        <span className="sm:hidden">ورود</span>
+        <span className="sm:hidden">{needsLoginAgain ? "ورود دوباره" : "ورود"}</span>
         <span className="hidden whitespace-nowrap sm:inline">
-          ورود / ثبت‌نام
+          {needsLoginAgain ? "ورود دوباره" : "ورود / ثبت‌نام"}
         </span>
       </Link>
     );
   }
+
+  const accountLabel =
+    state === "customer"
+      ? label || "حساب کاربری"
+      : state === "missing-profile"
+        ? "پروفایل مشتری موجود نیست"
+        : "وضعیت حساب نامشخص است";
 
   const logout = async () => {
     if (lock.current) return;
@@ -71,15 +84,17 @@ export function AccountNavigation({ label }: { label?: string }) {
 
   return (
     <div className="relative flex min-h-11 items-center overflow-visible rounded-lg border border-primary/30 bg-surface text-primary shadow-[0_1px_2px_rgb(var(--shadow-color)/0.04)] transition-colors hover:border-primary/55 hover:bg-primary-soft/35">
-      <span
-        className="inline-flex min-h-11 items-center gap-1.5 px-2.5"
-        title={label}
+      <Link
+        href="/account"
+        aria-label={`حساب کاربری ${accountLabel}`}
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-s-lg px-2.5 transition-colors hover:bg-primary-soft/70 active:bg-primary-soft"
+        title={accountLabel}
       >
         <UserIcon />
         <span className="hidden max-w-28 truncate text-sm font-bold md:inline">
-          {label}
+          {accountLabel}
         </span>
-      </span>
+      </Link>
       <span className="h-5 w-px bg-border" aria-hidden="true" />
       <button
         type="button"

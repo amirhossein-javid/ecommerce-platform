@@ -5,6 +5,7 @@ import {
   type CustomerProfile,
   isAuthTokens,
   isCustomerProfile,
+  type ProfileUpdateInput,
   type RegistrationInput,
 } from "@/lib/auth-contract";
 
@@ -115,6 +116,25 @@ export async function fetchCustomerProfile(
   const response = await requestDjango(PROFILE_PATH, {
     method: "GET",
     headers: { Authorization: `Bearer ${access}` },
+  });
+  const payload = await parsePayload(response);
+  if (!isCustomerProfile(payload)) {
+    throw new AuthApiError();
+  }
+  return payload;
+}
+
+export async function updateCustomerProfile(
+  access: string,
+  input: ProfileUpdateInput,
+): Promise<CustomerProfile> {
+  const response = await requestDjango(PROFILE_PATH, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${access}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
   });
   const payload = await parsePayload(response);
   if (!isCustomerProfile(payload)) {

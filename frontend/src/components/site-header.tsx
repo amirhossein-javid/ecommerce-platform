@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { AccountNavigation } from "@/components/account-navigation";
 import { Container } from "@/components/container";
-import { getCurrentCustomer } from "@/lib/auth-session";
+import { getCustomerSession } from "@/lib/auth-session";
 import { getCurrentGuestCart } from "@/lib/cart-api";
 import { getCartItemCount } from "@/lib/cart-contract";
 
@@ -13,7 +13,7 @@ const navigation = [
 
 export async function SiteHeader() {
   let cartItemCount = 0;
-  const customer = await getCurrentCustomer();
+  const session = await getCustomerSession();
 
   try {
     cartItemCount = getCartItemCount(await getCurrentGuestCart());
@@ -104,11 +104,8 @@ export async function SiteHeader() {
             </li>
             <li>
               <AccountNavigation
-                label={
-                  customer
-                    ? customer.first_name || customer.email
-                    : undefined
-                }
+                state={session.state}
+                label={session.state === "customer" ? session.customer.first_name || session.customer.email : undefined}
               />
             </li>
           </ul>

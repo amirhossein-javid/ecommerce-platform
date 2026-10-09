@@ -6,6 +6,7 @@ import {
   isCustomerProfile,
   normalizeToken,
   parseLoginInput,
+  parseProfileUpdateInput,
   parseRegistrationInput,
 } from "./auth-contract.ts";
 
@@ -17,6 +18,42 @@ test("validates strict login input without changing the password", () => {
   assert.equal(parseLoginInput({ email: "bad", password: "secret" }), null);
   assert.equal(
     parseLoginInput({ email: "a@example.com", password: "secret", next: "//evil" }),
+    null,
+  );
+});
+
+test("accepts only the writable profile fields and preserves optional blanks", () => {
+  assert.deepEqual(
+    parseProfileUpdateInput({
+      first_name: " علی ",
+      last_name: " رضایی ",
+      phone_number: " +989121234567 ",
+    }),
+    {
+      first_name: "علی",
+      last_name: "رضایی",
+      phone_number: "+989121234567",
+    },
+  );
+  assert.deepEqual(
+    parseProfileUpdateInput({ first_name: "", last_name: "", phone_number: "" }),
+    { first_name: "", last_name: "", phone_number: "" },
+  );
+  assert.equal(
+    parseProfileUpdateInput({
+      first_name: "علی",
+      last_name: "رضایی",
+      phone_number: "09121234567",
+    }),
+    null,
+  );
+  assert.equal(
+    parseProfileUpdateInput({
+      first_name: "علی",
+      last_name: "رضایی",
+      phone_number: "+989121234567",
+      email: "attacker@example.com",
+    }),
     null,
   );
 });

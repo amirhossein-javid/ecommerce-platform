@@ -22,6 +22,12 @@ export type CustomerProfile = {
   updated_at: string;
 };
 
+export type ProfileUpdateInput = {
+  first_name: string;
+  last_name: string;
+  phone_number: string;
+};
+
 type LoginInput = {
   email: string;
   password: string;
@@ -118,6 +124,37 @@ export function parseRegistrationInput(
   return email && password && first_name && last_name && phone_number
     ? { email, password, first_name, last_name, phone_number }
     : null;
+}
+
+export function parseProfileUpdateInput(
+  value: unknown,
+): ProfileUpdateInput | null {
+  const expected = ["first_name", "last_name", "phone_number"];
+  if (!isRecord(value) || !hasExactKeys(value, expected)) {
+    return null;
+  }
+
+  if (
+    typeof value.first_name !== "string" ||
+    typeof value.last_name !== "string" ||
+    typeof value.phone_number !== "string"
+  ) {
+    return null;
+  }
+
+  const first_name = value.first_name.trim();
+  const last_name = value.last_name.trim();
+  const phone_number = value.phone_number.trim();
+  if (
+    first_name.length > MAX_NAME_LENGTH ||
+    last_name.length > MAX_NAME_LENGTH ||
+    phone_number.length > MAX_PHONE_LENGTH ||
+    (phone_number.length > 0 && !PHONE_PATTERN.test(phone_number))
+  ) {
+    return null;
+  }
+
+  return { first_name, last_name, phone_number };
 }
 
 export function isAuthTokens(value: unknown): value is AuthTokens {
