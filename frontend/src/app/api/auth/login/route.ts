@@ -1,9 +1,18 @@
+import { cookies } from "next/headers";
+
 import {
   AuthApiError,
   fetchCustomerProfile,
   loginCustomer,
   logoutCustomer,
 } from "@/lib/auth-api";
+import { CartApiError, mergeGuestCart } from "@/lib/cart-api";
+import { normalizeGuestCartToken } from "@/lib/cart-contract";
+import {
+  classifyCartMergeFailure,
+  type LoginCartMergeState,
+  successfulCartMerge,
+} from "@/lib/cart-merge-policy";
 import { parseLoginInput } from "@/lib/auth-contract";
 import {
   authRouteError,
@@ -12,9 +21,11 @@ import {
   setAuthCookies,
 } from "@/lib/auth-route";
 import {
+  GUEST_CART_COOKIE_NAME,
   hasJsonContentType,
   isTrustedMutationRequest,
 } from "@/lib/cart-security";
+import { clearGuestCartCookie } from "@/lib/cart-route";
 import { verifyStorefrontCustomer } from "@/lib/customer-login-policy";
 
 function profileVerificationError(error: unknown) {
@@ -73,8 +84,49 @@ export async function POST(request: Request) {
     } catch (error) {
       return profileVerificationError(error);
     }
-    const response = privateAuthJson({ authenticated: true });
+
+    const cookieStore = await cookies();
+    const rawGuestToken = cookieStore.get(GUEST_CART_COOKIE_NAME)?.value;
+    const guestToken = normalizeGuestCartToken(rawGuestToken);
+    let cartMerge: LoginCartMergeState = "none";
+    let clearGuest = false;
+
+    if (rawGuestToken) {
+      if (!guestToken) {
+        cartMerge = "unavailable";
+        clearGuest = true;
+      } else {
+        try {
+          await mergeGuestCart(tokens.access, guestToken);
+          const decision = successfulCartMerge();
+          cartMerge = decision.state;
+          clearGuest = decision.clearGuestCookie;
+        } catch (error) {
+          const decision = classifyCartMergeFailure(
+            error instanceof CartApiError ? error.status : undefined,
+          );
+          if (!decision.establishSession) {
+            try {
+              await logoutCustomer(tokens.refresh);
+            } catch {
+              // Tokens are never exposed if best-effort revocation is unavailable.
+            }
+            const response = privateAuthJson(
+              { error: "اتصال امن حساب و سبد خرید تأیید نشد. دوباره تلاش کنید." },
+              401,
+            );
+            clearAuthCookies(response);
+            return response;
+          }
+          cartMerge = decision.state;
+          clearGuest = decision.clearGuestCookie;
+        }
+      }
+    }
+
+    const response = privateAuthJson({ authenticated: true, cartMerge });
     setAuthCookies(response, tokens);
+    if (clearGuest) clearGuestCartCookie(response);
     return response;
   } catch (error) {
     return authRouteError(error, "login");

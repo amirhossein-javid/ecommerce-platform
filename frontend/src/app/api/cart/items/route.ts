@@ -1,11 +1,17 @@
 import { cookies } from "next/headers";
 
-import { addGuestCartItem, CartApiError } from "@/lib/cart-api";
+import {
+  addCustomerCartItem,
+  addGuestCartItem,
+  CartApiError,
+} from "@/lib/cart-api";
 import {
   normalizeGuestCartToken,
   parseAddCartInput,
 } from "@/lib/cart-contract";
 import {
+  authenticatedCartResponse,
+  authenticatedCartRouteError,
   cartRouteError,
   privateJson,
   setGuestCartCookie,
@@ -15,6 +21,10 @@ import {
   hasJsonContentType,
   isTrustedMutationRequest,
 } from "@/lib/cart-security";
+import {
+  hasAuthenticationCookies,
+  withAuthenticatedSession,
+} from "@/lib/authenticated-request";
 
 async function parseRequestBody(request: Request) {
   if (!hasJsonContentType(request.headers)) {
@@ -41,6 +51,17 @@ export async function POST(request: Request) {
 
   if (!input) {
     return privateJson({ error: "اطلاعات محصول یا تعداد معتبر نیست." }, 400);
+  }
+
+  if (await hasAuthenticationCookies()) {
+    try {
+      const result = await withAuthenticatedSession((access) =>
+        addCustomerCartItem(access, input.productSlug, input.quantity),
+      );
+      return authenticatedCartResponse(result.value, result.rotatedTokens);
+    } catch (error) {
+      return authenticatedCartRouteError(error);
+    }
   }
 
   const cookieStore = await cookies();

@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { CartView } from "@/components/cart-view";
 import { Container } from "@/components/container";
-import { getCurrentGuestCart } from "@/lib/cart-api";
+import { getCurrentCart } from "@/lib/cart-api";
 
 export const metadata: Metadata = {
   title: "سبد خرید | فروشگاه",
@@ -38,11 +38,15 @@ function CartError() {
   );
 }
 
-export default async function CartPage() {
+type CartPageProps = {
+  searchParams: Promise<{ merge?: string | string[] }>;
+};
+
+export default async function CartPage({ searchParams }: CartPageProps) {
   let cart;
 
   try {
-    cart = await getCurrentGuestCart();
+    cart = await getCurrentCart();
   } catch {
     return (
       <Container className="py-7 sm:py-10 lg:py-14">
@@ -50,6 +54,13 @@ export default async function CartPage() {
       </Container>
     );
   }
+
+  const rawMerge = (await searchParams).merge;
+  const initialMergeState =
+    typeof rawMerge === "string" &&
+    ["pending", "unavailable"].includes(rawMerge)
+      ? (rawMerge as "pending" | "unavailable")
+      : undefined;
 
   return (
     <Container className="py-7 sm:py-10 lg:py-14">
@@ -62,7 +73,7 @@ export default async function CartPage() {
           تعداد کالاها، وضعیت موجودی و جمع قیمت را پیش از ادامه مرور کنید.
         </p>
       </header>
-      <CartView initialCart={cart} />
+      <CartView initialCart={cart} initialMergeState={initialMergeState} />
     </Container>
   );
 }

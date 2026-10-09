@@ -2,8 +2,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 
-import { AuthApiError } from "@/lib/auth-api";
 import { type AuthTokens, normalizeToken } from "@/lib/auth-contract";
+import { isAuthenticationFailure } from "@/lib/auth-error-policy";
 import { refreshSession } from "@/lib/auth-refresh";
 import {
   ACCESS_COOKIE_NAME,
@@ -27,10 +27,11 @@ export class AuthenticatedOperationError extends Error {
   }
 }
 
-function isAuthenticationError(error: unknown) {
-  return (
-    error instanceof AuthApiError &&
-    (error.status === 401 || error.status === 403)
+export async function hasAuthenticationCookies() {
+  const cookieStore = await cookies();
+  return Boolean(
+    cookieStore.get(ACCESS_COOKIE_NAME)?.value ||
+      cookieStore.get(REFRESH_COOKIE_NAME)?.value,
   );
 }
 
@@ -45,7 +46,7 @@ export async function withAuthenticatedSession<T>(
     try {
       return { value: await operation(access) };
     } catch (error) {
-      if (!isAuthenticationError(error)) {
+      if (!isAuthenticationFailure(error)) {
         throw error;
       }
     }
@@ -65,7 +66,7 @@ export async function withAuthenticatedSession<T>(
   try {
     return { value: await operation(tokens.access), rotatedTokens: tokens };
   } catch (error) {
-    if (isAuthenticationError(error)) {
+    if (isAuthenticationFailure(error)) {
       throw new AuthSessionError();
     }
     throw new AuthenticatedOperationError(error, tokens);

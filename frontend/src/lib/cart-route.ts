@@ -2,6 +2,12 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
+import type { AuthTokens } from "@/lib/auth-contract";
+import { clearAuthCookies, setAuthCookies } from "@/lib/auth-route";
+import {
+  AuthSessionError,
+  AuthenticatedOperationError,
+} from "@/lib/authenticated-request";
 import { CartApiError } from "@/lib/cart-api";
 import {
   getGuestCartCookieOptions,
@@ -29,6 +35,16 @@ export function clearGuestCartCookie(response: NextResponse) {
     ...getGuestCartCookieOptions(process.env.NODE_ENV === "production"),
     maxAge: 0,
   });
+}
+
+export function authenticatedCartResponse(
+  body: unknown,
+  rotatedTokens?: AuthTokens,
+  status = 200,
+) {
+  const response = privateJson(body, status);
+  if (rotatedTokens) setAuthCookies(response, rotatedTokens);
+  return response;
 }
 
 function hasField(payload: unknown, field: string) {
@@ -79,4 +95,28 @@ export function cartRouteError(error: unknown) {
     { error: "ارتباط با سرویس سبد خرید برقرار نشد." },
     503,
   );
+}
+
+export function authenticatedCartRouteError(caught: unknown) {
+  const error =
+    caught instanceof AuthenticatedOperationError
+      ? caught.originalError
+      : caught;
+  const rotatedTokens =
+    caught instanceof AuthenticatedOperationError
+      ? caught.rotatedTokens
+      : undefined;
+
+  if (error instanceof AuthSessionError) {
+    const response = privateJson(
+      { error: "نشست شما منقضی شده است. دوباره وارد شوید." },
+      401,
+    );
+    clearAuthCookies(response);
+    return response;
+  }
+
+  const response = cartRouteError(error);
+  if (rotatedTokens) setAuthCookies(response, rotatedTokens);
+  return response;
 }

@@ -3,6 +3,11 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 
+import { normalizeToken } from "@/lib/auth-contract";
+import {
+  ACCESS_COOKIE_NAME,
+  REFRESH_COOKIE_NAME,
+} from "@/lib/auth-security";
 import {
   type Cart,
   EMPTY_CART,
@@ -13,6 +18,7 @@ import { GUEST_CART_COOKIE_NAME } from "@/lib/cart-security";
 
 const CART_PATH = "/api/v1/cart/";
 const CART_ITEMS_PATH = "/api/v1/cart/items/";
+const CART_MERGE_PATH = "/api/v1/cart/merge/";
 const CART_TOKEN_HEADER = "X-Cart-Token";
 
 export class CartApiError extends Error {
@@ -112,6 +118,7 @@ async function requestDjango(
   path: string,
   init: RequestInit,
   token?: string,
+  access?: string,
 ) {
   const apiOrigin = getApiOrigin();
   const headers = new Headers(init.headers);
@@ -119,6 +126,9 @@ async function requestDjango(
 
   if (token) {
     headers.set(CART_TOKEN_HEADER, token);
+  }
+  if (access) {
+    headers.set("Authorization", `Bearer ${access}`);
   }
 
   let response: Response;
@@ -169,6 +179,16 @@ export async function fetchGuestCart(token?: string) {
   return parseCartResponse(response, apiOrigin);
 }
 
+export async function fetchCustomerCart(access: string) {
+  const { apiOrigin, response } = await requestDjango(
+    CART_PATH,
+    { method: "GET" },
+    undefined,
+    access,
+  );
+  return parseCartResponse(response, apiOrigin);
+}
+
 export async function addGuestCartItem(
   token: string | undefined,
   productSlug: string,
@@ -197,6 +217,24 @@ export async function addGuestCartItem(
   };
 }
 
+export async function addCustomerCartItem(
+  access: string,
+  productSlug: string,
+  quantity: number,
+) {
+  const { apiOrigin, response } = await requestDjango(
+    CART_ITEMS_PATH,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_slug: productSlug, quantity }),
+    },
+    undefined,
+    access,
+  );
+  return parseCartResponse(response, apiOrigin);
+}
+
 export async function updateGuestCartItem(
   token: string,
   itemId: number,
@@ -223,6 +261,47 @@ export async function removeGuestCartItem(token: string, itemId: number) {
   return fetchGuestCart(token);
 }
 
+export async function updateCustomerCartItem(
+  access: string,
+  itemId: number,
+  quantity: number,
+) {
+  await requestDjango(
+    `${CART_ITEMS_PATH}${itemId}/`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity }),
+    },
+    undefined,
+    access,
+  );
+  return fetchCustomerCart(access);
+}
+
+export async function removeCustomerCartItem(access: string, itemId: number) {
+  await requestDjango(
+    `${CART_ITEMS_PATH}${itemId}/`,
+    { method: "DELETE" },
+    undefined,
+    access,
+  );
+  return fetchCustomerCart(access);
+}
+
+export async function mergeGuestCart(
+  access: string,
+  guestToken: string,
+) {
+  const { apiOrigin, response } = await requestDjango(
+    CART_MERGE_PATH,
+    { method: "POST" },
+    guestToken,
+    access,
+  );
+  return parseCartResponse(response, apiOrigin);
+}
+
 export const getCurrentGuestCart = cache(async () => {
   const cookieStore = await cookies();
   const token = normalizeGuestCartToken(
@@ -241,4 +320,18 @@ export const getCurrentGuestCart = cache(async () => {
     }
     throw error;
   }
+});
+
+export const getCurrentCart = cache(async () => {
+  const cookieStore = await cookies();
+  const rawAccess = cookieStore.get(ACCESS_COOKIE_NAME)?.value;
+  const rawRefresh = cookieStore.get(REFRESH_COOKIE_NAME)?.value;
+
+  if (rawAccess || rawRefresh) {
+    const access = normalizeToken(rawAccess);
+    if (!access) throw new CartApiError(401);
+    return fetchCustomerCart(access);
+  }
+
+  return getCurrentGuestCart();
 });

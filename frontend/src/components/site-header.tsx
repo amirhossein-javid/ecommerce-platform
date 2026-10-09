@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AccountNavigation } from "@/components/account-navigation";
 import { Container } from "@/components/container";
 import { getCustomerSession } from "@/lib/auth-session";
-import { getCurrentGuestCart } from "@/lib/cart-api";
+import { getCurrentCart } from "@/lib/cart-api";
 import { getCartItemCount } from "@/lib/cart-contract";
 
 const navigation = [
@@ -16,7 +16,7 @@ export async function SiteHeader() {
   const session = await getCustomerSession();
 
   try {
-    cartItemCount = getCartItemCount(await getCurrentGuestCart());
+    cartItemCount = getCartItemCount(await getCurrentCart());
   } catch {
     // Keep global navigation available when the cart service is temporarily down.
   }
@@ -79,7 +79,7 @@ export async function SiteHeader() {
               <Link
                 href="/cart"
                 aria-label={`سبد خرید، ${cartItemCount.toLocaleString("fa-IR")} کالا`}
-                className="relative inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg border border-primary/15 bg-primary-soft/60 px-2.5 text-sm font-bold text-primary transition-[color,background-color,border-color,transform] hover:border-primary/35 hover:bg-primary-soft active:scale-[0.98] active:bg-primary-soft sm:gap-2 sm:px-3 sm:text-[0.95rem]"
+                className="relative inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg border border-primary/35 bg-surface px-2.5 text-sm font-bold text-primary shadow-[0_1px_2px_rgb(var(--shadow-color)/0.04)] transition-[color,background-color,border-color,transform] hover:border-primary/60 hover:bg-primary-soft/55 active:scale-[0.98] active:bg-primary-soft sm:gap-2 sm:px-3 sm:text-[0.95rem]"
               >
                 <svg
                   aria-hidden="true"
@@ -96,7 +96,7 @@ export async function SiteHeader() {
                   />
                 </svg>
                 {cartItemCount > 0 ? (
-                  <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 py-0.5 text-[0.65rem] font-black leading-4 text-primary-foreground shadow-[0_1px_2px_rgb(var(--shadow-color)/0.12)]">
+                  <span className="absolute bottom-1 right-1 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[0.6rem] font-black leading-none text-primary-foreground shadow-[0_1px_2px_rgb(var(--shadow-color)/0.12)]">
                     {cartItemCount.toLocaleString("fa-IR")}
                   </span>
                 ) : null}

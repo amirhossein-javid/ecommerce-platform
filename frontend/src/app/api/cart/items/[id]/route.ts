@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 
 import {
+  removeCustomerCartItem,
   removeGuestCartItem,
+  updateCustomerCartItem,
   updateGuestCartItem,
 } from "@/lib/cart-api";
 import {
@@ -9,27 +11,25 @@ import {
   parseCartItemId,
   parseQuantityInput,
 } from "@/lib/cart-contract";
-import { cartRouteError, privateJson } from "@/lib/cart-route";
+import {
+  authenticatedCartResponse,
+  authenticatedCartRouteError,
+  cartRouteError,
+  privateJson,
+} from "@/lib/cart-route";
 import {
   GUEST_CART_COOKIE_NAME,
   hasJsonContentType,
   isTrustedMutationRequest,
 } from "@/lib/cart-security";
+import {
+  hasAuthenticationCookies,
+  withAuthenticatedSession,
+} from "@/lib/authenticated-request";
 
 type CartItemRouteProps = {
   params: Promise<{ id: string }>;
 };
-
-async function getRequestIdentity(params: CartItemRouteProps["params"]) {
-  const { id } = await params;
-  const itemId = parseCartItemId(id);
-  const cookieStore = await cookies();
-  const token = normalizeGuestCartToken(
-    cookieStore.get(GUEST_CART_COOKIE_NAME)?.value,
-  );
-
-  return { itemId, token };
-}
 
 export async function PATCH(
   request: Request,
@@ -52,9 +52,29 @@ export async function PATCH(
   }
 
   const input = parseQuantityInput(payload);
-  const { itemId, token } = await getRequestIdentity(params);
+  const { id } = await params;
+  const itemId = parseCartItemId(id);
 
-  if (!itemId || !token || !input) {
+  if (!itemId || !input) {
+    return privateJson({ error: "سبد خرید، آیتم یا تعداد معتبر نیست." }, 400);
+  }
+
+  if (await hasAuthenticationCookies()) {
+    try {
+      const result = await withAuthenticatedSession((access) =>
+        updateCustomerCartItem(access, itemId, input.quantity),
+      );
+      return authenticatedCartResponse(result.value, result.rotatedTokens);
+    } catch (error) {
+      return authenticatedCartRouteError(error);
+    }
+  }
+
+  const cookieStore = await cookies();
+  const token = normalizeGuestCartToken(
+    cookieStore.get(GUEST_CART_COOKIE_NAME)?.value,
+  );
+  if (!token) {
     return privateJson({ error: "سبد خرید، آیتم یا تعداد معتبر نیست." }, 400);
   }
 
@@ -75,9 +95,29 @@ export async function DELETE(
     return privateJson({ error: "درخواست غیرمجاز است." }, 403);
   }
 
-  const { itemId, token } = await getRequestIdentity(params);
+  const { id } = await params;
+  const itemId = parseCartItemId(id);
 
-  if (!itemId || !token) {
+  if (!itemId) {
+    return privateJson({ error: "سبد خرید یا آیتم معتبر نیست." }, 400);
+  }
+
+  if (await hasAuthenticationCookies()) {
+    try {
+      const result = await withAuthenticatedSession((access) =>
+        removeCustomerCartItem(access, itemId),
+      );
+      return authenticatedCartResponse(result.value, result.rotatedTokens);
+    } catch (error) {
+      return authenticatedCartRouteError(error);
+    }
+  }
+
+  const cookieStore = await cookies();
+  const token = normalizeGuestCartToken(
+    cookieStore.get(GUEST_CART_COOKIE_NAME)?.value,
+  );
+  if (!token) {
     return privateJson({ error: "سبد خرید یا آیتم معتبر نیست." }, 400);
   }
 

@@ -15,6 +15,7 @@ import { formatToman } from "@/lib/format-price";
 
 type CartViewProps = {
   initialCart: Cart;
+  initialMergeState?: "pending" | "unavailable";
 };
 
 function CartImagePlaceholder() {
@@ -61,11 +62,79 @@ async function responseError(response: Response) {
   }
 }
 
-export function CartView({ initialCart }: CartViewProps) {
+export function CartView({ initialCart, initialMergeState }: CartViewProps) {
   const router = useRouter();
   const [cart, setCart] = useState(initialCart);
   const [pendingItem, setPendingItem] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [mergeState, setMergeState] = useState<
+    "merged" | "pending" | "unavailable" | undefined
+  >(initialMergeState);
+  const [mergePending, setMergePending] = useState(false);
+
+  const retryMerge = async () => {
+    if (mergePending) return;
+    setMergePending(true);
+    setError("");
+    try {
+      const response = await fetch("/api/cart/merge", { method: "POST" });
+      if (response.status === 401) {
+        router.push("/login");
+        router.refresh();
+        return;
+      }
+      if (!response.ok) {
+        setError(await responseError(response));
+        setMergeState(response.status === 409 ? "unavailable" : "pending");
+        return;
+      }
+      const payload: unknown = await response.json();
+      if (!isCart(payload)) {
+        setError("پاسخ ادغام سبد خرید معتبر نبود. صفحه را تازه کنید.");
+        return;
+      }
+      setCart(payload);
+      setMergeState("merged");
+      router.replace("/cart");
+      router.refresh();
+    } catch {
+      setError("ارتباط با سرویس سبد خرید برقرار نشد. دوباره تلاش کنید.");
+      setMergeState("pending");
+    } finally {
+      setMergePending(false);
+    }
+  };
+
+  const mergeNotice = mergeState ? (
+    <div
+      className={`mb-5 rounded-lg px-4 py-3 text-sm leading-7 ${
+        mergeState === "merged"
+          ? "bg-success-soft font-bold text-success"
+          : mergeState === "pending"
+            ? "bg-primary-soft/70 text-foreground"
+            : "bg-destructive-soft/60 text-destructive"
+      }`}
+      role={mergeState === "merged" ? "status" : "alert"}
+    >
+      {mergeState === "merged" ? (
+        "کالاهای سبد مهمان با حساب شما ادغام شدند."
+      ) : mergeState === "pending" ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <span>ورود انجام شد، اما ادغام سبد مهمان موقتاً کامل نشد. کالاها محفوظ‌اند.</span>
+          <button
+            type="button"
+            onClick={retryMerge}
+            disabled={mergePending}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
+          >
+            {mergePending ? "در حال تلاش…" : "تلاش دوباره"}
+          </button>
+        </div>
+      ) : (
+        "سبد مهمان قبلاً مصرف شده یا دیگر در دسترس نیست. محتوای سبد فعلی حساب را بررسی کنید."
+      )}
+    </div>
+  ) : null;
 
   const mutateItem = async (itemId: number, init: RequestInit) => {
     setPendingItem(itemId);
@@ -107,36 +176,47 @@ export function CartView({ initialCart }: CartViewProps) {
 
   if (cart.items.length === 0) {
     return (
-      <section className="rounded-xl bg-surface-muted/55 px-5 py-14 text-center sm:px-8 sm:py-20">
-        <div className="mx-auto grid size-16 place-items-center rounded-xl bg-primary-soft/70 text-primary">
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            className="size-8"
+      <>
+        {mergeNotice}
+        {error ? (
+          <p
+            role="alert"
+            className="mb-5 rounded-lg bg-destructive-soft px-4 py-3 text-sm font-semibold text-destructive"
           >
-            <path
-              d="M4 5h2l1.5 9h9.75l1.5-6H7M10 18.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm8 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-        <h2 className="mt-5 text-xl font-black text-foreground sm:text-2xl">
-          سبد خرید شما خالی است
-        </h2>
-        <p className="mx-auto mt-3 max-w-md leading-8 text-muted-foreground">
-          محصولات فروشگاه را ببینید و موارد دلخواهتان را به سبد اضافه کنید.
-        </p>
-        <Link
-          href="/products"
-          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
-        >
-          مشاهدهٔ محصولات
-        </Link>
-      </section>
+            {error}
+          </p>
+        ) : null}
+        <section className="rounded-xl bg-surface-muted/55 px-5 py-14 text-center sm:px-8 sm:py-20">
+          <div className="mx-auto grid size-16 place-items-center rounded-xl bg-primary-soft/70 text-primary">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="size-8"
+            >
+              <path
+                d="M4 5h2l1.5 9h9.75l1.5-6H7M10 18.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm8 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <h2 className="mt-5 text-xl font-black text-foreground sm:text-2xl">
+            سبد خرید شما خالی است
+          </h2>
+          <p className="mx-auto mt-3 max-w-md leading-8 text-muted-foreground">
+            محصولات فروشگاه را ببینید و موارد دلخواهتان را به سبد اضافه کنید.
+          </p>
+          <Link
+            href="/products"
+            className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
+          >
+            مشاهدهٔ محصولات
+          </Link>
+        </section>
+      </>
     );
   }
 
@@ -146,6 +226,7 @@ export function CartView({ initialCart }: CartViewProps) {
 
   return (
     <>
+      {mergeNotice}
       <div className="mb-5 min-h-7" aria-live="polite">
         {error ? (
           <p

@@ -121,7 +121,22 @@ export function AuthForm(props: AuthFormProps) {
       }
 
       if (isLogin) {
-        router.push("/");
+        const result: unknown = await response.json();
+        const cartMerge =
+          result &&
+          typeof result === "object" &&
+          !Array.isArray(result) &&
+          "cartMerge" in result &&
+          typeof result.cartMerge === "string"
+            ? result.cartMerge
+            : "none";
+        if (["pending", "unavailable"].includes(cartMerge)) {
+          router.push(`/cart?merge=${cartMerge}`);
+        } else if (cartMerge === "merged") {
+          router.push("/cart");
+        } else {
+          router.push("/");
+        }
         router.refresh();
       } else {
         router.push("/login?registered=1");
