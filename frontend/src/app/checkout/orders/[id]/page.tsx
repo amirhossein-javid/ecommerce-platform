@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { Container } from "@/components/container";
+import { PaymentPanel } from "@/components/payment-panel";
 import { getCustomerSession } from "@/lib/auth-session";
 import { CheckoutApiError, getCustomerOrder } from "@/lib/checkout-api";
 import { parseOrderId, type OrderStatus } from "@/lib/checkout-contract";
@@ -98,8 +99,11 @@ export default async function OrderResultPage({ params }: OrderResultPageProps) 
               <div className="flex justify-between gap-4"><dt className="text-muted-foreground">هزینه ارسال</dt><dd className="font-bold tabular-nums"><bdi>{formatToman(order.shipping_total)}</bdi></dd></div>
               <div className="flex items-center justify-between gap-4 border-t border-border/70 pt-3"><dt className="font-black text-foreground">مبلغ نهایی</dt><dd className="text-lg font-black tabular-nums text-primary"><bdi>{formatToman(order.grand_total)}</bdi></dd></div>
             </dl>
-            {order.status === "PENDING_PAYMENT" ? <p className="mt-4 rounded-lg bg-primary-soft/55 px-3 py-3 text-xs font-semibold leading-6 text-foreground">سفارش ثبت شده اما پرداخت نشده است. پرداخت در مرحلهٔ بعدی محصول پیاده‌سازی می‌شود.</p> : null}
-            <Link href="/products" className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-primary px-5 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover">بازگشت به محصولات</Link>
+            <PaymentPanel
+              orderId={order.id}
+              initialOrderStatus={order.status}
+            />
+            <Link href="/products" className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-primary/25 px-5 text-sm font-bold text-primary hover:bg-primary-soft/45">بازگشت به محصولات</Link>
           </aside>
         </div>
       </section>
