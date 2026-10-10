@@ -9,8 +9,8 @@ type ProductCardProps = {
 
 function ProductImagePlaceholder() {
   return (
-    <div className="flex size-full flex-col items-center justify-center gap-2 bg-surface-muted px-2 text-center text-muted-foreground">
-      <span className="flex size-12 items-center justify-center rounded-lg bg-surface/75 sm:size-16 sm:rounded-xl">
+    <div className="flex size-full flex-col items-center justify-center gap-2 bg-surface-muted/55 px-2 text-center text-muted-foreground">
+      <span className="flex size-12 items-center justify-center rounded-full border border-gold/45 bg-surface/75 text-primary sm:size-16">
         <svg
           aria-hidden="true"
           viewBox="0 0 48 48"
@@ -43,9 +43,9 @@ export function ProductCard({ product }: ProductCardProps) {
     <article className="group h-full min-w-0">
       <Link
         href={`/products/${product.slug}`}
-        className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-surface shadow-card motion-safe:transition-[border-color,box-shadow,transform] motion-safe:duration-300 hover:border-primary/25 hover:shadow-card-hover motion-safe:hover:-translate-y-0.5"
+        className="flex h-full min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-gold/35 bg-background shadow-card motion-safe:transition-[border-color,box-shadow,transform] motion-safe:duration-300 hover:border-gold/70 hover:shadow-card-hover motion-safe:hover:-translate-y-1"
       >
-        <div className="relative aspect-square overflow-hidden bg-surface-muted sm:aspect-[5/4]">
+        <div className="relative aspect-[4/3] overflow-hidden bg-surface-muted">
           {image ? (
             // The public media origin is deployment-owned and not yet fixed, so a
             // native image avoids a speculative Next.js remote-image allowlist.
@@ -53,18 +53,18 @@ export function ProductCard({ product }: ProductCardProps) {
             <img
               src={image.image}
               alt={image.alt_text || product.name}
-              className="size-full object-cover motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.02]"
+              className="size-full object-cover motion-safe:transition-transform motion-safe:duration-700 motion-safe:group-hover:scale-105"
             />
           ) : (
             <ProductImagePlaceholder />
           )}
+          <span className="absolute start-3 top-3 max-w-[75%] truncate rounded-full bg-primary px-3 py-1 text-[0.68rem] font-extrabold text-primary-foreground shadow-sm sm:start-4 sm:top-4 sm:text-xs">
+            {product.category.name}
+          </span>
         </div>
 
-        <div className="flex flex-1 flex-col p-3 sm:p-5">
-          <div className="flex min-w-0 items-center justify-between gap-2 text-xs sm:text-sm">
-            <p className="min-w-0 truncate font-medium text-muted-foreground">
-              {product.category.name}
-            </p>
+        <div className="flex flex-1 flex-col p-4 sm:p-5">
+          <div className="flex min-w-0 items-center justify-end gap-2 text-xs sm:text-sm">
             <span
               className={`inline-flex shrink-0 items-center gap-1.5 text-[0.68rem] font-bold sm:text-xs ${
                 product.in_stock
@@ -82,13 +82,19 @@ export function ProductCard({ product }: ProductCardProps) {
             </span>
           </div>
 
-          <h2 className="mt-2.5 line-clamp-2 min-h-12 text-sm font-extrabold leading-6 text-foreground transition-colors group-hover:text-primary sm:mt-3 sm:min-h-14 sm:text-lg sm:leading-7 xl:text-xl xl:leading-8">
+          <h2 className="mt-2.5 line-clamp-2 min-h-12 text-sm font-black leading-6 text-foreground transition-colors group-hover:text-primary sm:mt-3 sm:min-h-14 sm:text-lg sm:leading-7 xl:text-xl xl:leading-8">
             {product.name}
           </h2>
 
-          <p className="mt-auto break-words pt-4 text-base font-black leading-7 tabular-nums text-primary sm:pt-5 sm:text-[1.2rem] sm:leading-8 xl:text-[1.3rem]">
-            <bdi>{formatToman(product.price)}</bdi>
-          </p>
+          <div className="mt-auto flex items-end justify-between gap-3 border-t border-gold/25 pt-4 sm:pt-5">
+            <p className="break-words text-sm font-black leading-7 tabular-nums text-lapis sm:text-base xl:text-lg">
+              <bdi>{formatToman(product.price)}</bdi>
+            </p>
+            <span className="inline-flex shrink-0 items-center gap-1 text-xs font-extrabold text-primary">
+              مشاهده
+              <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4 transition-transform motion-safe:group-hover:-translate-x-1"><path d="M16 10H4m5-5-5 5 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </span>
+          </div>
         </div>
       </Link>
     </article>

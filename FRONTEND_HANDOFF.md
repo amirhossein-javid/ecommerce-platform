@@ -26,8 +26,10 @@ Next.js to Django still use the existing JSON API and `Authorization: Bearer
 
 ## Current frontend implementation status
 
-As of Phase 5.3, the executable Next.js implementation includes:
+As of Phase 6.1, the executable Next.js implementation includes:
 
+- a server-rendered storefront homepage with live category and latest-product
+  discovery, catalog search, and independent empty/error/loading states;
 - server-rendered catalog discovery and product detail;
 - registration, login, logout, rotating JWT session cookies, customer-profile
   verification, profile editing, and address CRUD/default selection;

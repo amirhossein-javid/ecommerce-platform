@@ -23,9 +23,16 @@ function UserIcon() {
   );
 }
 
+export type AccountNavigationState =
+  | "guest"
+  | "customer"
+  | "missing-profile"
+  | "invalid"
+  | "upstream-error";
+
 type AccountNavigationProps = {
   label?: string;
-  state: "guest" | "customer" | "missing-profile" | "invalid" | "upstream-error";
+  state: AccountNavigationState;
 };
 
 export function AccountNavigation({ label, state }: AccountNavigationProps) {

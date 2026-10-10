@@ -15,8 +15,8 @@ const vazirmatn = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "فروشگاه",
-  description: "فروشگاه اینترنتی فارسی",
+  title: "نقش‌جهان",
+  description: "فروشگاه اینترنتی فارسی نقش‌جهان",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
