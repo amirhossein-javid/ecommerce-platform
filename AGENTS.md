@@ -3,10 +3,12 @@
 ## Start Here
 
 This repository is a production-oriented e-commerce monorepo. The Django/DRF
-backend is feature-complete for the current portfolio scope, production-hardened,
-and should be treated as a stable contract. The Next.js storefront is implemented
-through checkout and payment handoff/result UX; the next planned milestone is
-customer order history and order detail (Phase 5.3).
+backend is feature-complete for the current implemented scope,
+production-hardened, and should be treated as a stable contract. The Next.js
+storefront implements the customer journey from catalog discovery through
+account, cart, checkout, payment handoff/result, and owned order history/detail.
+The next planned product feature is customer product reviews and moderation;
+it is not implemented yet.
 
 Read these sources before changing the areas they govern:
 
@@ -250,11 +252,18 @@ The current frontend uses:
   concrete implementation need justifies it.
 
 Implemented customer-facing scope currently includes the public catalog and
-product detail, registration/login/logout and profile, customer addresses,
-guest/authenticated cart with explicit login merge, authenticated checkout,
-the created-order result, and payment initiation/return handling. Account order
-history and general customer order-detail navigation are not implemented yet;
-they are Phase 5.3. Do not infer completion from the post-checkout result route.
+product detail, search/filter/sort/pagination, registration/login/logout and
+profile, customer addresses, guest/authenticated cart with explicit login merge,
+authenticated checkout, payment initiation/return handling, the immediate
+post-checkout result, and paginated owned order history/detail with eligible
+payment resumption.
+
+The storefront uses the established Naghsh-e Jahan visual system: Persian RTL,
+local Vazirmatn, ivory surfaces, Persian blue/lapis, turquoise, restrained gold,
+and sparing Persian-pattern accents. Reuse the shared header, footer, page
+headers, cards, form controls, state treatments, and CSS tokens. Design
+mobile-first and verify at 360px and 390px as well as desktop. Do not fabricate
+catalog data, ratings, promotions, delivery promises, or availability.
 
 The BFF may handle rendering, secure HttpOnly browser cookies, CSRF/origin
 protection for its cookie-authenticated mutations, server-side API calls,
@@ -276,6 +285,18 @@ When frontend implementation uncovers friction, first determine whether it is a
 demonstrated correctness, security, or required integration/contract gap; a BFF
 responsibility; a deployment issue; or a nice-to-have. Change the frozen backend
 only for a demonstrated gap in the first category.
+
+### Planned product reviews (not implemented)
+
+The agreed next feature allows any authenticated storefront customer to submit
+a product review with an integer rating from 1 through 5 and required review
+text. The author must be derived from the authenticated customer's profile;
+clients must not choose or override it. A review requires administrator approval
+before public visibility, and public aggregates must include approved reviews
+only. No review model, API, moderation workflow, aggregate response shape, or
+storefront form/list currently exists. Inspect and design those contracts before
+implementation rather than inferring them from the static homepage testimonial
+content.
 
 ## Production and Security Boundaries
 

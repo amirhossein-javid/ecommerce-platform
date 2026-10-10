@@ -1,7 +1,9 @@
-# E-commerce monorepo
+# Naghsh-e Jahan ecommerce monorepo
 
 Production-oriented ecommerce application with a Django/DRF API, PostgreSQL,
-and a Next.js App Router storefront/BFF, orchestrated locally with Docker.
+and a Next.js App Router storefront/BFF, orchestrated locally with Docker. The
+customer-facing application is a Persian RTL store for Isfahan handicrafts under
+the Naghsh-e Jahan identity.
 
 The repository is organized as a monorepo. The Django application and its
 Python tooling live in `backend/`, and the Next.js application lives in
@@ -10,6 +12,30 @@ remain at the root.
 
 The executable Next.js integration boundary is documented in
 [`FRONTEND_HANDOFF.md`](FRONTEND_HANDOFF.md).
+
+## Current scope
+
+The Django API implements email-based customer authentication, profiles and
+owned addresses, the public category/product catalog, guest and customer carts,
+explicit cart merge, transactional checkout and inventory reservations, owned
+order history/detail and cancellation, fulfillment lifecycle, payments, Bale
+verification/webhooks, refund tracking, and operator administration. Django is
+authoritative for identity, ownership, prices, stock, totals, lifecycle state,
+and payment truth.
+
+The Next.js storefront implements the Persian RTL homepage, catalog discovery,
+search/filter/sort/pagination, product detail and add-to-cart, guest and customer
+carts, authentication, account/profile/address management, checkout, payment
+handoff and authoritative result handling, and paginated customer order
+history/detail. Its thin same-origin BFF stores JWTs and the guest-cart token in
+HttpOnly cookies, enforces origin checks on mutations, serializes refresh-token
+rotation, and keeps personalized responses private/no-store. Detailed endpoint
+sequences and ownership/error behavior belong in `FRONTEND_HANDOFF.md` rather
+than being duplicated here.
+
+The next planned feature is product reviews and administrator moderation. It is
+not implemented. Its agreed requirements and the contracts that remain to be
+designed are recorded in `FRONTEND_HANDOFF.md`.
 
 ## Local setup with Docker
 
