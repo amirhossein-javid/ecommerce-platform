@@ -77,7 +77,14 @@ class CustomerOrderListView(CustomerOrderMixin, ListAPIView):
     pagination_class = CustomerOrderPagination
 
     def get_queryset(self):
-        return super().get_queryset().order_by("-created_at", "-pk")
+        return (
+            super()
+            .get_queryset()
+            .prefetch_related(
+                Prefetch("items", queryset=OrderItem.objects.order_by("pk"))
+            )
+            .order_by("-created_at", "-pk")
+        )
 
 
 @extend_schema_view(

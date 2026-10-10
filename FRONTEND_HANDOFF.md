@@ -24,6 +24,39 @@ The intended browser topology is same-origin. Server-to-server requests from
 Next.js to Django still use the existing JSON API and `Authorization: Bearer
 <access-token>` contract.
 
+## Current frontend implementation status
+
+As of Phase 6.1, the executable Next.js implementation includes:
+
+- a server-rendered storefront homepage with live category and latest-product
+  discovery, catalog search, and independent empty/error/loading states;
+- server-rendered catalog discovery and product detail;
+- registration, login, logout, rotating JWT session cookies, customer-profile
+  verification, profile editing, and address CRUD/default selection;
+- guest and authenticated carts, including explicit replay-safe guest-cart
+  merge during login;
+- authenticated checkout and a result page for the newly created order;
+- payment initiation, allowlisted generic URL handoff, Bale invoice handoff,
+  generic return verification, and authoritative order-status refresh; and
+- customer order history with item snapshots, pagination, owned order detail,
+  and payment resumption for backend-eligible pending orders.
+
+JWTs and guest cart credentials are HttpOnly cookies. Personalized BFF
+responses are private/no-store, state-changing BFF routes enforce exact-origin
+checks, JSON-bearing routes validate content type and input, and Django remains
+authoritative for every commerce decision. Login verifies `CustomerProfile`
+before establishing cookies; an authenticated Django `User` whose profile is
+missing is an explicit storefront error state, never a guest fallback.
+
+The root Compose file falls back to `UnavailablePaymentGateway` unless a
+provider is explicitly configured. There is no bundled browser payment
+simulator. Bale testing requires its external Mini App/webhook environment; SDK
+callback values remain informational.
+
+The `/checkout/orders/{id}` page remains the immediate post-checkout result.
+Account history and general owned detail live at `/account/orders` and
+`/account/orders/{id}`.
+
 ## Shared API conventions
 
 - API routes are under `/api/v1/`. Schema and docs are `/api/schema/` and
@@ -168,7 +201,8 @@ does not decrement physical stock. Django revalidates current products, prices,
 stock, address ownership, and competing reservations. The UI must discard any
 locally calculated total in favor of the response.
 
-- `GET /api/v1/orders/` returns the customer's newest-first paginated orders.
+- `GET /api/v1/orders/` returns the customer's newest-first paginated orders,
+  including immutable item snapshots used for the history summary.
 - `GET /api/v1/orders/{id}/` returns owned order totals, item snapshots,
   shipping snapshot, status, and creation/update timestamps.
 - `POST /api/v1/orders/{id}/cancel/` takes no body and returns `id`, `status`,

@@ -25,7 +25,7 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.development
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-development-only}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1},web
       DATABASE_URL: ${DATABASE_URL:-postgresql://ecommerce:ecommerce@db:5432/ecommerce}
       PAYMENT_GATEWAY_CLASS: ${PAYMENT_GATEWAY_CLASS:-apps.payments.gateways.UnavailablePaymentGateway}
       BALE_BOT_TOKEN: ${BALE_BOT_TOKEN:-}
@@ -57,5 +57,26 @@ services:
       retries: 5
       start_period: 10s
 
+  frontend:
+    build:
+      context: ./frontend
+    command: npm run dev -- --hostname 0.0.0.0 --webpack
+    environment:
+      DJANGO_API_URL: ${DJANGO_API_URL:-http://web:8000}
+      DJANGO_PUBLIC_MEDIA_URL: ${DJANGO_PUBLIC_MEDIA_URL:-http://localhost:8000/media/}
+      PAYMENT_REDIRECT_ALLOWED_ORIGINS: ${PAYMENT_REDIRECT_ALLOWED_ORIGINS:-}
+      WATCHPACK_POLLING: 1000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next_cache:/app/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      web:
+        condition: service_healthy
+
 volumes:
   postgres_data:
+  frontend_node_modules:
+  frontend_next_cache:

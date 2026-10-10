@@ -115,6 +115,30 @@ class OrderCancellationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class CustomerOrderItemSerializer(serializers.ModelSerializer):
+    unit_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        read_only=True,
+    )
+    line_total = serializers.DecimalField(
+        max_digits=20,
+        decimal_places=0,
+        read_only=True,
+    )
+
+    class Meta:
+        model = OrderItem
+        fields = (
+            "product_name",
+            "sku",
+            "unit_price",
+            "quantity",
+            "line_total",
+        )
+        read_only_fields = fields
+
+
 class CustomerOrderListSerializer(serializers.ModelSerializer):
     subtotal = serializers.DecimalField(
         max_digits=22,
@@ -136,6 +160,7 @@ class CustomerOrderListSerializer(serializers.ModelSerializer):
         decimal_places=0,
         read_only=True,
     )
+    items = CustomerOrderItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = Order
@@ -146,32 +171,9 @@ class CustomerOrderListSerializer(serializers.ModelSerializer):
             "discount_total",
             "shipping_total",
             "grand_total",
+            "items",
             "created_at",
             "updated_at",
-        )
-        read_only_fields = fields
-
-
-class CustomerOrderItemSerializer(serializers.ModelSerializer):
-    unit_price = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=0,
-        read_only=True,
-    )
-    line_total = serializers.DecimalField(
-        max_digits=20,
-        decimal_places=0,
-        read_only=True,
-    )
-
-    class Meta:
-        model = OrderItem
-        fields = (
-            "product_name",
-            "sku",
-            "unit_price",
-            "quantity",
-            "line_total",
         )
         read_only_fields = fields
 

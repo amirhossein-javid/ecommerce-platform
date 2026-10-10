@@ -71,6 +71,7 @@ def test_customer_order_apis_require_authentication(api_client, customer, url_na
 def test_order_list_is_owned_paginated_and_newest_first(api_client, customer):
     other_customer = create_customer("other-orders@example.com")
     own_orders = [create_order(customer) for _ in range(3)]
+    create_order_item(own_orders[2])
     create_order(other_customer)
     api_client.force_authenticate(user=customer.user)
 
@@ -83,6 +84,15 @@ def test_order_list_is_owned_paginated_and_newest_first(api_client, customer):
         own_orders[1].pk,
     ]
     assert response.json()["next"] is not None
+    assert response.json()["results"][0]["items"] == [
+        {
+            "product_name": "Historical Product",
+            "sku": "HISTORICAL-SKU",
+            "unit_price": "12",
+            "quantity": 2,
+            "line_total": "24",
+        }
+    ]
 
 
 @pytest.mark.django_db
@@ -214,7 +224,7 @@ def test_order_list_query_count_is_constant(
         create_order(customer)
     api_client.force_authenticate(user=customer.user)
 
-    with django_assert_num_queries(3):
+    with django_assert_num_queries(4):
         response = api_client.get(reverse("orders:order-list"))
 
     assert response.status_code == status.HTTP_200_OK
