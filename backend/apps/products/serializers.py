@@ -3,7 +3,13 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import RejectInputFieldsMixin
 
-from .models import Category, Product, ProductImage, ProductReview
+from .models import (
+    Category,
+    Product,
+    ProductImage,
+    ProductReview,
+    ProductReviewReply,
+)
 
 
 class CategorySummarySerializer(serializers.ModelSerializer):
@@ -108,18 +114,50 @@ class ProductListFilterSerializer(serializers.Serializer):
         return attrs
 
 
+class ProductReviewReplySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductReviewReply
+        fields = ("comment", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+        extra_kwargs = {
+            "comment": {"required": True, "allow_blank": False},
+        }
+
+    def validate_comment(self, value):
+        comment = value.strip()
+        if not comment:
+            raise serializers.ValidationError("This field may not be blank.")
+        return comment
+
+
 class PublicProductReviewSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
+    store_reply = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductReview
-        fields = ("id", "rating", "comment", "author_name", "created_at")
+        fields = (
+            "id",
+            "rating",
+            "comment",
+            "author_name",
+            "created_at",
+            "store_reply",
+        )
         read_only_fields = fields
 
     @extend_schema_field(serializers.CharField())
     def get_author_name(self, obj):
         display_name = f"{obj.customer.first_name} {obj.customer.last_name}".strip()
         return display_name or "مشتری نقش‌جهان"
+
+    @extend_schema_field(ProductReviewReplySerializer(allow_null=True))
+    def get_store_reply(self, obj):
+        try:
+            reply = obj.store_reply
+        except ProductReviewReply.DoesNotExist:
+            return None
+        return ProductReviewReplySerializer(reply).data
 
 
 class OwnProductReviewSerializer(
@@ -172,3 +210,62 @@ class ProductReviewAggregateSerializer(serializers.Serializer):
         read_only=True,
     )
     review_count = serializers.IntegerField(min_value=0, read_only=True)
+
+
+class ManagedProductSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ("id", "name", "slug")
+        read_only_fields = fields
+
+
+class ManagedProductReviewSerializer(serializers.ModelSerializer):
+    product = ManagedProductSummarySerializer(read_only=True)
+    customer_display_name = serializers.SerializerMethodField()
+    store_reply = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductReview
+        fields = (
+            "id",
+            "product",
+            "customer_display_name",
+            "rating",
+            "comment",
+            "status",
+            "created_at",
+            "updated_at",
+            "store_reply",
+        )
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField())
+    def get_customer_display_name(self, obj):
+        display_name = f"{obj.customer.first_name} {obj.customer.last_name}".strip()
+        return display_name or f"مشتری شمارهٔ {obj.customer_id}"
+
+    @extend_schema_field(ProductReviewReplySerializer(allow_null=True))
+    def get_store_reply(self, obj):
+        try:
+            reply = obj.store_reply
+        except ProductReviewReply.DoesNotExist:
+            return None
+        return ProductReviewReplySerializer(reply).data
+
+
+class ProductReviewManagementFilterSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=ProductReview.Status,
+        required=False,
+    )
+    has_reply = serializers.BooleanField(required=False)
+    search = serializers.CharField(required=False, allow_blank=False, max_length=255)
+
+
+class ProductReviewModerationSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=(
+            ProductReview.Status.APPROVED,
+            ProductReview.Status.REJECTED,
+        )
+    )

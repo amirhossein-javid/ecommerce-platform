@@ -1,26 +1,30 @@
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count, Prefetch
+from django.db.models import Avg, Count, Prefetch, Q
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, status
 from rest_framework.exceptions import APIException, NotFound
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import CustomerProfile
 
-from .models import Category, Product, ProductImage, ProductReview
+from .models import Category, Product, ProductImage, ProductReview, ProductReviewReply
 from .serializers import (
     CategorySerializer,
+    ManagedProductReviewSerializer,
     OwnProductReviewSerializer,
     ProductDetailSerializer,
     ProductListFilterSerializer,
     ProductListSerializer,
     ProductReviewAggregateSerializer,
+    ProductReviewManagementFilterSerializer,
+    ProductReviewModerationSerializer,
+    ProductReviewReplySerializer,
     PublicProductReviewSerializer,
 )
 
@@ -171,7 +175,7 @@ class PublicProductReviewListView(ListAPIView):
         return ProductReview.objects.filter(
             product=product,
             status=ProductReview.Status.APPROVED,
-        ).select_related("customer")
+        ).select_related("customer", "store_reply")
 
 
 class ProductReviewAggregateView(APIView):
@@ -264,4 +268,171 @@ class OwnProductReviewView(APIView):
         customer = self.get_customer_profile()
         review = self.get_review(product=product, customer=customer)
         review.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ReviewManagementPermission(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user.is_authenticated or not user.is_active or not user.is_staff:
+            return False
+        return view.has_operator_permission(user, request.method)
+
+
+class ReviewManagementPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class ReviewManagementMixin:
+    permission_classes = (ReviewManagementPermission,)
+
+    @staticmethod
+    def can_view_reviews(user):
+        return user.has_perm("products.view_productreview") or user.has_perm(
+            "products.change_productreview"
+        )
+
+    def get_review(self, pk, *, for_update=False):
+        queryset = ProductReview.objects
+        if for_update:
+            queryset = queryset.select_for_update()
+        related = ["product", "product__category", "customer"]
+        if not for_update:
+            related.append("store_reply")
+        try:
+            return queryset.select_related(*related).get(pk=pk)
+        except ProductReview.DoesNotExist as exc:
+            raise NotFound("Review not found.") from exc
+
+
+@extend_schema_view(get=extend_schema(tags=["Review Management"]))
+class ProductReviewManagementListView(ReviewManagementMixin, ListAPIView):
+    serializer_class = ManagedProductReviewSerializer
+    pagination_class = ReviewManagementPagination
+
+    def has_operator_permission(self, user, method):
+        return method in {"GET", "HEAD", "OPTIONS"} and self.can_view_reviews(user)
+
+    def get_queryset(self):
+        filter_serializer = ProductReviewManagementFilterSerializer(
+            data=self.request.query_params
+        )
+        filter_serializer.is_valid(raise_exception=True)
+        filters_data = filter_serializer.validated_data
+        queryset = ProductReview.objects.select_related(
+            "product",
+            "product__category",
+            "customer",
+            "store_reply",
+        )
+        if review_status := filters_data.get("status"):
+            queryset = queryset.filter(status=review_status)
+        if (has_reply := filters_data.get("has_reply")) is not None:
+            queryset = queryset.filter(store_reply__isnull=not has_reply)
+        if search := filters_data.get("search"):
+            queryset = queryset.filter(
+                Q(product__name__icontains=search)
+                | Q(product__slug__icontains=search)
+                | Q(customer__first_name__icontains=search)
+                | Q(customer__last_name__icontains=search)
+                | Q(comment__icontains=search)
+            )
+        return queryset.order_by("-created_at", "-pk")
+
+
+class ReviewAlreadyModerated(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Only pending reviews can be moderated."
+    default_code = "review_already_moderated"
+
+
+class ProductReviewModerationView(ReviewManagementMixin, APIView):
+    def has_operator_permission(self, user, method):
+        return method == "POST" and user.has_perm("products.change_productreview")
+
+    @extend_schema(
+        request=ProductReviewModerationSerializer,
+        responses={status.HTTP_200_OK: ManagedProductReviewSerializer},
+        tags=["Review Management"],
+    )
+    def post(self, request, pk):
+        serializer = ProductReviewModerationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            review = self.get_review(pk, for_update=True)
+            if review.status != ProductReview.Status.PENDING:
+                raise ReviewAlreadyModerated
+            review.status = serializer.validated_data["status"]
+            review.save(update_fields=("status", "updated_at"))
+        return Response(ManagedProductReviewSerializer(review).data)
+
+
+class DuplicateProductReviewReply(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "A store reply already exists for this review."
+    default_code = "duplicate_review_reply"
+
+
+class ProductReviewReplyManagementView(ReviewManagementMixin, APIView):
+    def has_operator_permission(self, user, method):
+        if not self.can_view_reviews(user):
+            return False
+        permission_by_method = {
+            "POST": "products.add_productreviewreply",
+            "PATCH": "products.change_productreviewreply",
+            "DELETE": "products.delete_productreviewreply",
+        }
+        permission = permission_by_method.get(method)
+        return permission is not None and user.has_perm(permission)
+
+    @extend_schema(
+        request=ProductReviewReplySerializer,
+        responses={status.HTTP_201_CREATED: ProductReviewReplySerializer},
+        tags=["Review Management"],
+    )
+    def post(self, request, pk):
+        serializer = ProductReviewReplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                review = self.get_review(pk, for_update=True)
+                reply = serializer.save(review=review)
+        except IntegrityError as exc:
+            raise DuplicateProductReviewReply from exc
+        return Response(
+            ProductReviewReplySerializer(reply).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        request=ProductReviewReplySerializer,
+        responses={status.HTTP_200_OK: ProductReviewReplySerializer},
+        tags=["Review Management"],
+    )
+    def patch(self, request, pk):
+        serializer = ProductReviewReplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            self.get_review(pk, for_update=True)
+            try:
+                reply = ProductReviewReply.objects.select_for_update().get(review_id=pk)
+            except ProductReviewReply.DoesNotExist as exc:
+                raise NotFound("Store reply not found.") from exc
+            reply.comment = serializer.validated_data["comment"]
+            reply.save(update_fields=("comment", "updated_at"))
+        return Response(ProductReviewReplySerializer(reply).data)
+
+    @extend_schema(
+        request=None,
+        responses={status.HTTP_204_NO_CONTENT: None},
+        tags=["Review Management"],
+    )
+    def delete(self, request, pk):
+        with transaction.atomic():
+            self.get_review(pk, for_update=True)
+            deleted, _ = ProductReviewReply.objects.filter(review_id=pk).delete()
+            if not deleted:
+                raise NotFound("Store reply not found.")
         return Response(status=status.HTTP_204_NO_CONTENT)

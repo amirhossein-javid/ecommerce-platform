@@ -256,7 +256,9 @@ profile, customer addresses, guest/authenticated cart with explicit login merge,
 authenticated checkout, payment initiation/return handling, the immediate
 post-checkout result, and paginated owned order history/detail with eligible
 payment resumption. Product detail includes approved review listing and
-aggregates, authenticated submission, own moderation status, and deletion.
+aggregates, official store replies, authenticated submission, own moderation
+status, and deletion. Authorized operators can moderate reviews and manage
+replies through Django Admin or the dedicated Next.js management panel.
 
 The storefront uses the established Naghsh-e Jahan visual system: Persian RTL,
 local Vazirmatn, ivory surfaces, Persian blue/lapis, turquoise, restrained gold,
@@ -294,7 +296,10 @@ initial `PENDING` status are server-derived. Customers may read their own status
 and delete, but cannot edit; deletion permits a fresh pending submission. Admin
 moderation uses explicit approve/reject actions and requires the model change
 permission, not merely `is_staff`. Public lists and aggregates include
-`APPROVED` reviews only. The static homepage testimonial content remains
+`APPROVED` reviews only. Each review has at most one official store reply,
+enforced by a database one-to-one relationship. Reply CRUD requires its
+corresponding model permission and public responses expose a reply only as part
+of an approved review. The static homepage testimonial content remains
 independent from product reviews.
 
 ## Production and Security Boundaries

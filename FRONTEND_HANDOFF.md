@@ -135,7 +135,9 @@ testimonial carousel entirely separate:
 
 - `GET /api/v1/products/{slug}/reviews/` returns a page-number-paginated list of
   approved reviews. Rows contain `id`, integer `rating`, `comment`, public
-  `author_name`, and `created_at`; status and private customer data are absent.
+  `author_name`, `created_at`, and nullable `store_reply`. A reply contains only
+  `comment`, `created_at`, and `updated_at`; status and private customer data are
+  absent.
 - `GET /api/v1/products/{slug}/reviews/aggregate/` returns
   `average_rating` as a one-decimal string and `review_count`, using approved
   reviews only. The empty representation is
@@ -160,7 +162,25 @@ cycles are also limited.
 Django Admin exposes read-only review records and explicit approve/reject
 actions for pending reviews. Moderation requires the `change_productreview`
 permission; `is_staff` alone is insufficient. Approved and rejected reviews are
-not transitioned again by these actions.
+not transitioned again by these actions. `ProductReviewReply` is managed as a
+separate Admin model; its one-to-one review relation enforces at most one reply.
+Add/change/delete operations use their corresponding Django model permissions.
+
+The authenticated operator API is intentionally separate from customer review
+operations:
+
+- `GET /api/v1/management/reviews/` requires a staff account plus either
+  `view_productreview` or `change_productreview`. It supports `status`,
+  `has_reply`, `search`, `page`, and `page_size`.
+- `POST /api/v1/management/reviews/{id}/moderate/` accepts only `APPROVED` or
+  `REJECTED`, requires `change_productreview`, and only transitions `PENDING`.
+- `POST`, `PATCH`, and `DELETE`
+  `/api/v1/management/reviews/{id}/reply/` require review visibility plus the
+  matching add/change/delete `ProductReviewReply` permission.
+
+Mutation paths lock the review row and rely on the one-to-one database
+constraint for concurrent reply creation. Staff status by itself grants no API
+access.
 
 The Next.js product page server-renders the bounded public list and aggregate.
 Its client component calls the same-origin
@@ -168,6 +188,13 @@ Its client component calls the same-origin
 Personal responses are private/no-store, mutations use exact-origin protection,
 JWT refresh stays server-side, and backend validation, duplicate, and throttle
 responses remain authoritative.
+
+The focused panel at `/management/reviews` uses separate `management_access`
+and `management_refresh` HttpOnly cookies so an operator session does not become
+a storefront customer session. Its `/api/management/...` BFF routes validate
+input, enforce exact-origin protection for mutations, refresh tokens server-side,
+and return `private, no-store` responses. Django remains authoritative for all
+permissions, moderation transitions, and reply uniqueness.
 
 ## Authentication and account
 

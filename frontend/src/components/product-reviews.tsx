@@ -397,6 +397,22 @@ export function ProductReviews({
                 <Stars rating={review.rating} />
               </div>
               <p className="mt-4 whitespace-pre-line text-sm leading-8 text-foreground sm:text-base sm:leading-9">{review.comment}</p>
+              {review.store_reply ? (
+                <div className="mt-5 border-s-2 border-primary bg-primary-soft/45 px-4 py-3 sm:px-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-black text-primary">پاسخ رسمی فروشگاه</p>
+                    <time
+                      dateTime={review.store_reply.updated_at}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {formatReviewDate(review.store_reply.updated_at)}
+                    </time>
+                  </div>
+                  <p className="mt-2 whitespace-pre-line text-sm leading-8 text-foreground">
+                    {review.store_reply.comment}
+                  </p>
+                </div>
+              ) : null}
             </article>
           ))}
           {!publicError && visibleAggregate.review_count > visibleReviews.length ? (

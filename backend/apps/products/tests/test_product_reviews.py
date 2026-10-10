@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import CustomerProfile, User
-from apps.products.models import Category, Product, ProductReview
+from apps.products.models import Category, Product, ProductReview, ProductReviewReply
 
 
 @pytest.fixture
@@ -223,11 +223,15 @@ def test_public_list_and_aggregate_include_only_approved_reviews(
     pending_profile = CustomerProfile.objects.create(user=pending_user)
     rejected_user = User.objects.create_user("rejected@example.com")
     rejected_profile = CustomerProfile.objects.create(user=rejected_user)
-    create_review(
+    approved_review = create_review(
         active_product,
         approved_profile,
         rating=4,
         status=ProductReview.Status.APPROVED,
+    )
+    ProductReviewReply.objects.create(
+        review=approved_review,
+        comment="سپاس از همراهی شما.",
     )
     create_review(
         active_product,
@@ -257,6 +261,7 @@ def test_public_list_and_aggregate_include_only_approved_reviews(
     public_review = list_response.json()["results"][0]
     assert public_review["rating"] == 4
     assert public_review["author_name"] == "Ali Ahmadi"
+    assert public_review["store_reply"]["comment"] == "سپاس از همراهی شما."
     assert "email" not in public_review
     assert "status" not in public_review
     assert aggregate_response.json() == {

@@ -58,6 +58,11 @@ test("validates approved public reviews without private identity fields", () => 
     comment: "زیبا",
     author_name: "مینا احمدی",
     created_at: "2026-10-10T10:00:00Z",
+    store_reply: {
+      comment: "سپاس از همراهی شما.",
+      created_at: "2026-10-10T11:00:00Z",
+      updated_at: "2026-10-10T11:00:00Z",
+    },
   };
   assert.equal(
     isProductReviewPage({

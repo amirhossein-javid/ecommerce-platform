@@ -3,8 +3,8 @@ from django.contrib.auth.models import Permission
 from django.urls import reverse
 
 from apps.accounts.models import CustomerProfile, User
-from apps.products.admin import ProductReviewAdmin
-from apps.products.models import Category, Product, ProductReview
+from apps.products.admin import ProductReviewAdmin, ProductReviewReplyAdmin
+from apps.products.models import Category, Product, ProductReview, ProductReviewReply
 
 
 @pytest.fixture
@@ -59,6 +59,10 @@ def test_product_review_uses_protected_admin():
     from django.contrib import admin
 
     assert isinstance(admin.site._registry[ProductReview], ProductReviewAdmin)
+    assert isinstance(
+        admin.site._registry[ProductReviewReply],
+        ProductReviewReplyAdmin,
+    )
 
 
 @pytest.mark.django_db
@@ -169,3 +173,29 @@ def test_admin_does_not_remoderate_or_directly_edit_review(client, review):
     assert change_response.status_code == 403
     review.refresh_from_db()
     assert review.status == ProductReview.Status.APPROVED
+
+
+@pytest.mark.django_db
+def test_reply_admin_uses_model_permissions_and_locks_review_on_edit(client, review):
+    operator = create_operator(with_change_permission=False)
+    operator.user_permissions.add(
+        *Permission.objects.filter(
+            content_type__app_label="products",
+            codename__in=(
+                "view_productreview",
+                "add_productreviewreply",
+                "change_productreviewreply",
+                "delete_productreviewreply",
+            ),
+        )
+    )
+    reply = ProductReviewReply.objects.create(review=review, comment="Thank you.")
+    client.force_login(operator)
+
+    response = client.get(
+        reverse("admin:products_productreviewreply_change", args=(reply.pk,))
+    )
+
+    assert response.status_code == 200
+    assert 'name="review"' not in response.content.decode()
+    assert 'name="comment"' in response.content.decode()

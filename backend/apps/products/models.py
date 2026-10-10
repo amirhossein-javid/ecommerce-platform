@@ -290,6 +290,28 @@ class ProductReview(models.Model):
         return f"Review {self.pk} for {self.product}"
 
 
+class ProductReviewReply(models.Model):
+    review = models.OneToOneField(
+        ProductReview,
+        on_delete=models.CASCADE,
+        related_name="store_reply",
+    )
+    comment = models.TextField(max_length=5000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(comment__regex=r"\S"),
+                name="products_review_reply_comment_not_blank",
+            )
+        ]
+
+    def __str__(self):
+        return f"Store reply to review {self.review_id}"
+
+
 def product_image_upload_to(instance, filename):
     return f"products/{instance.product_id}/{filename}"
 

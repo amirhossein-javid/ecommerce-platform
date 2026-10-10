@@ -12,6 +12,7 @@ from .models import (
     Product,
     ProductImage,
     ProductReview,
+    ProductReviewReply,
     lock_category_parent_structure,
 )
 
@@ -340,3 +341,43 @@ class ProductReviewAdmin(admin.ModelAdmin):
                 f"{skipped} non-pending review(s) were left unchanged.",
                 level=messages.WARNING,
             )
+
+
+class ProductReviewReplyAdminForm(forms.ModelForm):
+    class Meta:
+        model = ProductReviewReply
+        fields = ("review", "comment")
+
+    def clean_comment(self):
+        comment = self.cleaned_data["comment"].strip()
+        if not comment:
+            raise ValidationError("Reply text cannot be blank.")
+        return comment
+
+
+@admin.register(ProductReviewReply)
+class ProductReviewReplyAdmin(admin.ModelAdmin):
+    form = ProductReviewReplyAdminForm
+    list_display = ("id", "review", "created_at", "updated_at")
+    list_display_links = ("id", "review")
+    search_fields = (
+        "review__product__name",
+        "review__customer__first_name",
+        "review__customer__last_name",
+        "review__comment",
+        "comment",
+    )
+    list_select_related = (
+        "review",
+        "review__product",
+        "review__customer",
+    )
+    autocomplete_fields = ("review",)
+    fields = ("review", "comment", "created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-created_at", "-pk")
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj is not None:
+            return ("review", *self.readonly_fields)
+        return self.readonly_fields

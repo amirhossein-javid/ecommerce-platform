@@ -7,6 +7,9 @@ from .views import (
     ProductDetailView,
     ProductListView,
     ProductReviewAggregateView,
+    ProductReviewManagementListView,
+    ProductReviewModerationView,
+    ProductReviewReplyManagementView,
     PublicProductReviewListView,
 )
 
@@ -39,5 +42,20 @@ urlpatterns = [
         "products/<str:slug>/reviews/mine/",
         OwnProductReviewView.as_view(),
         name="own-product-review",
+    ),
+    path(
+        "management/reviews/",
+        ProductReviewManagementListView.as_view(),
+        name="review-management-list",
+    ),
+    path(
+        "management/reviews/<int:pk>/moderate/",
+        ProductReviewModerationView.as_view(),
+        name="review-management-moderate",
+    ),
+    path(
+        "management/reviews/<int:pk>/reply/",
+        ProductReviewReplyManagementView.as_view(),
+        name="review-management-reply",
     ),
 ]

@@ -10,6 +10,11 @@ export type PublicProductReview = {
   comment: string;
   author_name: string;
   created_at: string;
+  store_reply: {
+    comment: string;
+    created_at: string;
+    updated_at: string;
+  } | null;
 };
 
 export type OwnProductReview = {
@@ -84,15 +89,31 @@ export function normalizeReviewSlug(value: string) {
 
 export function isPublicProductReview(value: unknown): value is PublicProductReview {
   if (!isRecord(value)) return false;
+  const reply = value.store_reply;
+  const validReply =
+    reply === null ||
+    (isRecord(reply) &&
+      typeof reply.comment === "string" &&
+      reply.comment.trim().length > 0 &&
+      isIsoDate(reply.created_at) &&
+      isIsoDate(reply.updated_at));
   return (
-    hasExactKeys(value, ["id", "rating", "comment", "author_name", "created_at"]) &&
+    hasExactKeys(value, [
+      "id",
+      "rating",
+      "comment",
+      "author_name",
+      "created_at",
+      "store_reply",
+    ]) &&
     isPositiveInteger(value.id) &&
     isRating(value.rating) &&
     typeof value.comment === "string" &&
     value.comment.trim().length > 0 &&
     typeof value.author_name === "string" &&
     value.author_name.trim().length > 0 &&
-    isIsoDate(value.created_at)
+    isIsoDate(value.created_at) &&
+    validReply
   );
 }
 

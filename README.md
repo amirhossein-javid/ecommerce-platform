@@ -28,7 +28,10 @@ search/filter/sort/pagination, product detail and add-to-cart, guest and custome
 carts, authentication, account/profile/address management, checkout, payment
 handoff and authoritative result handling, and paginated customer order
 history/detail. Product detail also includes approved customer reviews, rating
-aggregates, authenticated submission, moderation-status display, and deletion.
+aggregates, official store replies, authenticated submission, moderation-status
+display, and deletion. Authorized operators can moderate reviews and manage one
+official reply per review through Django Admin or the focused Next.js panel at
+`/management/reviews`.
 Its thin same-origin BFF stores JWTs and the guest-cart token in
 HttpOnly cookies, enforces origin checks on mutations, serializes refresh-token
 rotation, and keeps personalized responses private/no-store. Detailed endpoint
