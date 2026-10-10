@@ -5,7 +5,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.products.models import Category, Product, ProductImage
+from apps.accounts.models import CustomerProfile, User
+from apps.products.models import Category, Product, ProductImage, ProductReview
 
 
 @pytest.fixture
@@ -195,6 +196,8 @@ def test_product_list_is_lightweight_and_hides_internal_fields(api_client, categ
         "price",
         "in_stock",
         "primary_image",
+        "average_rating",
+        "review_count",
     }
     assert item["in_stock"] is True
     assert item["category"] == {
@@ -209,6 +212,8 @@ def test_product_list_is_lightweight_and_hides_internal_fields(api_client, categ
         "is_primary": True,
         "position": 0,
     }
+    assert item["average_rating"] is None
+    assert item["review_count"] == 0
     assert "sku" not in item
     assert "stock_quantity" not in item
     assert "description" not in item
@@ -222,6 +227,67 @@ def test_product_list_uses_null_for_missing_primary_image(api_client, categories
     response = api_client.get(reverse("products:product-list"))
 
     assert response.json()["results"][0]["primary_image"] is None
+
+
+@pytest.mark.django_db
+def test_product_list_rating_aggregate_uses_only_approved_reviews(
+    api_client,
+    categories,
+):
+    category, _, _ = categories
+    product = create_product(category, "rated-product")
+    statuses_and_ratings = (
+        (ProductReview.Status.APPROVED, 5),
+        (ProductReview.Status.APPROVED, 4),
+        (ProductReview.Status.PENDING, 1),
+        (ProductReview.Status.REJECTED, 1),
+    )
+    for index, (review_status, rating) in enumerate(statuses_and_ratings):
+        customer = CustomerProfile.objects.create(
+            user=User.objects.create_user(f"rating-{index}@example.com")
+        )
+        ProductReview.objects.create(
+            product=product,
+            customer=customer,
+            rating=rating,
+            comment=f"Review {index}",
+            status=review_status,
+        )
+
+    response = api_client.get(reverse("products:product-list"))
+    item = response.json()["results"][0]
+
+    assert item["average_rating"] == "4.5"
+    assert item["review_count"] == 2
+
+
+@pytest.mark.django_db
+def test_product_list_rating_reflects_moderation_and_deletion(
+    api_client,
+    categories,
+):
+    category, _, _ = categories
+    product = create_product(category, "changing-rating")
+    customer = CustomerProfile.objects.create(
+        user=User.objects.create_user("changing-rating@example.com")
+    )
+    review = ProductReview.objects.create(
+        product=product,
+        customer=customer,
+        rating=3,
+        comment="Changing review",
+    )
+
+    pending = api_client.get(reverse("products:product-list")).json()["results"][0]
+    review.status = ProductReview.Status.APPROVED
+    review.save(update_fields=("status", "updated_at"))
+    approved = api_client.get(reverse("products:product-list")).json()["results"][0]
+    review.delete()
+    deleted = api_client.get(reverse("products:product-list")).json()["results"][0]
+
+    assert (pending["average_rating"], pending["review_count"]) == (None, 0)
+    assert (approved["average_rating"], approved["review_count"]) == ("3.0", 1)
+    assert (deleted["average_rating"], deleted["review_count"]) == (None, 0)
 
 
 @pytest.mark.django_db
@@ -516,11 +582,26 @@ def test_product_list_avoids_category_and_image_n_plus_one_queries(
     second = create_product(category, "second")
     create_image(first, 0)
     create_image(second, 0)
+    for index, product in enumerate((first, second)):
+        customer = CustomerProfile.objects.create(
+            user=User.objects.create_user(f"query-rating-{index}@example.com")
+        )
+        ProductReview.objects.create(
+            product=product,
+            customer=customer,
+            rating=5 - index,
+            comment="Approved review",
+            status=ProductReview.Status.APPROVED,
+        )
 
     with django_assert_num_queries(3):
         response = api_client.get(reverse("products:product-list"))
 
     assert response.status_code == status.HTTP_200_OK
+    assert {
+        item["slug"]: (item["average_rating"], item["review_count"])
+        for item in response.json()["results"]
+    } == {"first": ("5.0", 1), "second": ("4.0", 1)}
 
 
 @pytest.mark.django_db
@@ -564,6 +645,8 @@ def test_openapi_schema_documents_public_catalog_endpoints_and_filters(api_clien
         "price",
         "in_stock",
         "primary_image",
+        "average_rating",
+        "review_count",
     }
     assert set(schemas["ProductDetail"]["properties"]) == {
         "id",

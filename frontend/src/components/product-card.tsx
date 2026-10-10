@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ProductRating } from "@/components/product-rating";
 import type { ProductListItem } from "@/lib/catalog-api";
 import { formatToman } from "@/lib/format-price";
 
@@ -64,7 +65,13 @@ export function ProductCard({ product }: ProductCardProps) {
         </div>
 
         <div className="flex flex-1 flex-col p-4 sm:p-5">
-          <div className="flex min-w-0 items-center justify-end gap-2 text-xs sm:text-sm">
+          <div className="flex min-w-0 items-center justify-between gap-2 text-xs sm:text-sm">
+            <ProductRating
+              rating={{
+                average_rating: product.average_rating,
+                review_count: product.review_count,
+              }}
+            />
             <span
               className={`inline-flex shrink-0 items-center gap-1.5 text-[0.68rem] font-bold sm:text-xs ${
                 product.in_stock

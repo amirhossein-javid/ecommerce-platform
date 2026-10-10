@@ -170,6 +170,9 @@ REST_FRAMEWORK = {
         "bale_webhook": _throttle_rate(
             "DJANGO_THROTTLE_BALE_WEBHOOK_RATE", "300/minute"
         ),
+        "review_mutation": _throttle_rate(
+            "DJANGO_THROTTLE_REVIEW_MUTATION_RATE", "10/hour"
+        ),
     },
     "NUM_PROXIES": THROTTLE_NUM_PROXIES,
 }

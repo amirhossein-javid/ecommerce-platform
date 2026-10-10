@@ -36,6 +36,13 @@ export default function ProductDetailLoading() {
             <div className="mt-5 h-12 rounded bg-surface-muted motion-safe:animate-pulse" />
           </div>
         </div>
+        <div className="mt-12 grid gap-7 border-t border-gold/35 pt-10 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
+          <div className="space-y-4">
+            <div className="h-7 w-48 rounded bg-surface-muted motion-safe:animate-pulse" />
+            <div className="h-36 rounded-[1.25rem] bg-surface-muted motion-safe:animate-pulse" />
+          </div>
+          <div className="h-48 rounded-[1.5rem] bg-surface-muted motion-safe:animate-pulse" />
+        </div>
       </div>
     </Container>
   );
