@@ -6,6 +6,7 @@ import { AccountSidebar } from "@/components/account-sidebar";
 import { Container } from "@/components/container";
 import { OrderStatusBadge } from "@/components/order-status-badge";
 import { PaymentPanel } from "@/components/payment-panel";
+import { StorefrontPageHeader } from "@/components/storefront-page-header";
 import { getCustomerSession } from "@/lib/auth-session";
 import { parseOrderId } from "@/lib/checkout-contract";
 import { formatToman } from "@/lib/format-price";
@@ -13,7 +14,7 @@ import { getCustomerOrderDetail, OrderApiError } from "@/lib/order-api";
 import { classifyOrderFailure } from "@/lib/order-policy";
 
 export const metadata: Metadata = {
-  title: "جزئیات سفارش | فروشگاه",
+  title: "جزئیات سفارش | نقش‌جهان",
   description: "مشاهدهٔ اقلام، مبلغ، آدرس و وضعیت سفارش",
 };
 
@@ -49,24 +50,20 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const createdAt = new Intl.DateTimeFormat("fa-IR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(order.created_at));
 
   return (
-    <Container className="py-7 sm:py-10 lg:py-14">
-      <header className="mb-7 border-b border-border/75 pb-6 sm:mb-9">
-        <Link href="/account/orders" className="text-sm font-bold text-primary hover:underline">→ بازگشت به سفارش‌های من</Link>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl">سفارش شمارهٔ <bdi>{order.id.toLocaleString("fa-IR")}</bdi></h1>
-            <time dateTime={order.created_at} className="mt-2 block text-sm text-muted-foreground">ثبت‌شده در {createdAt}</time>
-          </div>
-          <OrderStatusBadge status={order.status} />
-        </div>
-      </header>
+    <Container className="py-6 sm:py-9 lg:py-12">
+      <StorefrontPageHeader
+        eyebrow="جزئیات سفارش"
+        title={<>سفارش شمارهٔ <bdi>{order.id.toLocaleString("fa-IR")}</bdi></>}
+        description={`ثبت‌شده در ${createdAt}`}
+        trailing={<div className="flex flex-wrap items-center justify-center gap-3"><OrderStatusBadge status={order.status} /><Link href="/account/orders" className="rounded-full border border-gold/50 px-4 py-2 text-xs font-bold text-white hover:bg-white/10">بازگشت به سفارش‌ها</Link></div>}
+      />
 
       <div className="grid min-w-0 gap-7 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-10">
         <AccountSidebar customer={session.customer} active="orders" />
         <main className="min-w-0 space-y-6">
-          <section className="rounded-xl border border-border/75 bg-surface p-5 sm:p-7" aria-labelledby="order-items-title">
+          <section className="rounded-[1.5rem] border border-gold/40 bg-surface p-5 shadow-card sm:p-7" aria-labelledby="order-items-title">
             <h2 id="order-items-title" className="text-xl font-black text-foreground">کالاهای سفارش</h2>
-            <div className="mt-4 divide-y divide-border/75 border-y border-border/75">
+            <div className="mt-4 divide-y divide-gold/30 border-y border-gold/30">
               {order.items.map((item, index) => (
                 <article key={`${item.sku}-${index}`} className="py-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -80,7 +77,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           </section>
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <section className="rounded-xl border border-border/75 bg-surface p-5 sm:p-6" aria-labelledby="delivery-title">
+            <section className="rounded-[1.5rem] border border-gold/40 bg-surface p-5 shadow-card sm:p-6" aria-labelledby="delivery-title">
               <h2 id="delivery-title" className="text-lg font-black text-foreground">آدرس تحویل ثبت‌شده</h2>
               {order.shipping_title ? <p className="mt-3 text-xs font-bold text-primary">{order.shipping_title}</p> : null}
               <p className="mt-2 font-bold">{order.shipping_recipient_first_name} {order.shipping_recipient_last_name}</p>
@@ -88,13 +85,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               <p className="mt-2 text-xs text-muted-foreground"><bdi dir="ltr">{order.shipping_recipient_phone_number}</bdi> · کد پستی <bdi>{order.shipping_postal_code}</bdi></p>
             </section>
 
-            <aside className="rounded-xl border border-border/75 bg-surface p-5 sm:p-6" aria-labelledby="totals-title">
+            <aside className="rounded-[1.5rem] border border-gold/40 bg-surface p-5 shadow-card sm:p-6" aria-labelledby="totals-title">
               <h2 id="totals-title" className="text-lg font-black text-foreground">مبالغ سفارش</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex justify-between gap-4"><dt className="text-muted-foreground">جمع کالاها</dt><dd className="font-bold tabular-nums"><bdi>{formatToman(order.subtotal)}</bdi></dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-muted-foreground">تخفیف</dt><dd className="font-bold tabular-nums"><bdi>{formatToman(order.discount_total)}</bdi></dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-muted-foreground">هزینهٔ ارسال</dt><dd className="font-bold tabular-nums"><bdi>{formatToman(order.shipping_total)}</bdi></dd></div>
-                <div className="flex justify-between gap-4 border-t border-border/70 pt-3"><dt className="font-black">مبلغ نهایی</dt><dd className="text-lg font-black tabular-nums text-primary"><bdi>{formatToman(order.grand_total)}</bdi></dd></div>
+                <div className="flex justify-between gap-4 border-t border-gold/30 pt-3"><dt className="font-black">مبلغ نهایی</dt><dd className="text-lg font-black tabular-nums text-lapis"><bdi>{formatToman(order.grand_total)}</bdi></dd></div>
               </dl>
               <PaymentPanel orderId={order.id} initialOrderStatus={order.status} />
             </aside>
@@ -104,4 +101,3 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     </Container>
   );
 }
-

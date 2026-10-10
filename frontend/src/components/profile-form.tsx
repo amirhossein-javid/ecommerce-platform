@@ -132,22 +132,22 @@ export function ProfileForm({ profile }: { profile: CustomerProfile }) {
             value={current.email}
             readOnly
             dir="ltr"
-            className="mt-2 min-h-12 w-full cursor-not-allowed rounded-lg border border-border/70 bg-surface-muted/55 px-4 text-sm text-muted-foreground outline-none"
+            className="mt-2 min-h-12 w-full cursor-not-allowed rounded-xl border border-gold/30 bg-surface-muted/45 px-4 text-sm text-muted-foreground outline-none"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">ایمیل حساب قابل ویرایش نیست.</p>
         </div>
       </div>
 
       <div className="mt-6 min-h-7" aria-live="polite">
-        {error ? <p role="alert" className="text-sm font-semibold text-destructive">{error}</p> : null}
-        {success ? <p role="status" className="text-sm font-bold text-success">{success}</p> : null}
+        {error ? <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive-soft px-4 py-3 text-sm font-semibold text-destructive">{error}</p> : null}
+        {success ? <p role="status" className="rounded-xl border border-success/20 bg-success-soft px-4 py-3 text-sm font-bold text-success">{success}</p> : null}
       </div>
 
-      <div className="mt-4 flex justify-end border-t border-border/70 pt-5">
+      <div className="mt-4 flex justify-end border-t border-gold/30 pt-5">
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-primary px-6 text-sm font-extrabold text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-65 sm:w-auto"
+          className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-primary px-6 text-sm font-extrabold text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-65 sm:w-auto"
         >
           {pending ? "در حال ذخیره…" : "ذخیرهٔ تغییرات"}
         </button>
@@ -185,7 +185,7 @@ function ProfileField({
         name={name}
         aria-invalid={Boolean(error)}
         aria-describedby={descriptionId}
-        className="mt-2 min-h-12 w-full rounded-lg border border-border bg-surface px-4 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary-soft"
+        className="mt-2 min-h-12 w-full rounded-xl border border-gold/40 bg-background px-4 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary-soft"
         {...inputProps}
       />
       {error ? (

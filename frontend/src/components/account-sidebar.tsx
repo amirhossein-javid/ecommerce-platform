@@ -20,10 +20,10 @@ export function AccountSidebar({ customer, active }: AccountSidebarProps) {
 
   return (
     <aside
-      className="rounded-xl bg-primary-soft/45 p-4 lg:sticky lg:top-28"
+      className="overflow-hidden rounded-[1.5rem] border border-gold/40 bg-surface p-4 shadow-card lg:sticky lg:top-28"
       aria-label="بخش‌های حساب کاربری"
     >
-      <div className="border-b border-primary/10 px-2 pb-4">
+      <div className="rounded-[1rem] bg-background px-3 py-4">
         <p className="truncate font-black text-foreground">{displayName}</p>
         <p className="mt-1 truncate text-xs text-muted-foreground" dir="ltr">
           {customer.email}
@@ -38,16 +38,16 @@ export function AccountSidebar({ customer, active }: AccountSidebarProps) {
                 <Link
                   href={item.href}
                   aria-current={current ? "page" : undefined}
-                  className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-bold transition-colors ${
+                  className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-bold transition-colors ${
                     current
-                      ? "bg-surface text-primary shadow-[0_1px_2px_rgb(var(--shadow-color)/0.05)]"
-                      : "text-foreground hover:bg-surface/70 hover:text-primary"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-foreground hover:bg-background hover:text-primary"
                   }`}
                 >
                   <span
                     aria-hidden="true"
-                    className={`grid size-7 place-items-center rounded-md ${
-                      current ? "bg-primary-soft" : "bg-surface/70"
+                    className={`grid size-7 place-items-center rounded-lg ${
+                      current ? "bg-white/15" : "bg-background"
                     }`}
                   >
                     {item.key === "profile" ? "●" : item.key === "orders" ? "□" : "⌖"}

@@ -175,7 +175,7 @@ export function PaymentPanel({ orderId, initialOrderStatus }: PaymentPanelProps)
       setError("درگاه مسیر ادامهٔ پرداخت را برنگرداند.");
       lock.current = false;
     } catch {
-      setError("پاسخ آغاز پرداخت دریافت نشد. می‌توانید با خیال امن دوباره تلاش کنید؛ Django همان تلاش معلق را با کلید ثابت ادامه می‌دهد.");
+      setError("پاسخ آغاز پرداخت دریافت نشد. می‌توانید دوباره تلاش کنید؛ فروشگاه درخواست تکراری را به‌صورت ایمن مدیریت می‌کند.");
       lock.current = false;
     } finally {
       setPending(false);
@@ -186,7 +186,7 @@ export function PaymentPanel({ orderId, initialOrderStatus }: PaymentPanelProps)
   const retryAllowed = canRetryPayment(orderStatus, paymentStatus);
 
   return (
-    <section aria-labelledby="payment-action-title" className="mt-5 border-t border-border/70 pt-5">
+    <section aria-labelledby="payment-action-title" className="mt-5 border-t border-gold/30 pt-5">
       <Script
         src="https://tapi.bale.ai/miniapp.js"
         strategy="afterInteractive"
@@ -197,22 +197,22 @@ export function PaymentPanel({ orderId, initialOrderStatus }: PaymentPanelProps)
       />
       <h3 id="payment-action-title" className="font-black text-foreground">پرداخت سفارش</h3>
       {terminalMessage ? (
-        <p className={`mt-3 rounded-lg px-3 py-3 text-xs font-semibold leading-6 ${orderStatus === "PAID" || orderStatus === "PROCESSING" || orderStatus === "SHIPPED" || orderStatus === "DELIVERED" ? "bg-success-soft text-success" : "bg-destructive-soft text-destructive"}`} role="status">
+        <p className={`mt-3 rounded-xl border px-3 py-3 text-xs font-semibold leading-6 ${orderStatus === "PAID" || orderStatus === "PROCESSING" || orderStatus === "SHIPPED" || orderStatus === "DELIVERED" ? "border-success/20 bg-success-soft text-success" : "border-destructive/20 bg-destructive-soft text-destructive"}`} role="status">
           {terminalMessage}
         </p>
       ) : (
-        <p className="mt-2 text-xs leading-6 text-muted-foreground">پس از بازگشت از درگاه، فقط وضعیت ثبت‌شده در Django ملاک نتیجه است.</p>
+        <p className="mt-2 text-xs leading-6 text-muted-foreground">پس از بازگشت از درگاه، فقط وضعیت ثبت‌شده در فروشگاه ملاک نتیجه است.</p>
       )}
-      {message ? <p className="mt-3 rounded-lg bg-primary-soft/55 px-3 py-3 text-xs font-semibold leading-6 text-foreground" role="status">{message}</p> : null}
-      {error ? <p className="mt-3 rounded-lg bg-destructive-soft px-3 py-3 text-xs font-semibold leading-6 text-destructive" role="alert">{error}</p> : null}
+      {message ? <p className="mt-3 rounded-xl border border-primary/15 bg-primary-soft/55 px-3 py-3 text-xs font-semibold leading-6 text-foreground" role="status">{message}</p> : null}
+      {error ? <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive-soft px-3 py-3 text-xs font-semibold leading-6 text-destructive" role="alert">{error}</p> : null}
 
       {retryAllowed ? (
-        <button type="button" onClick={initiate} disabled={pending || checking} className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-primary px-5 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
+        <button type="button" onClick={initiate} disabled={pending || checking} className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-primary px-5 text-sm font-extrabold text-primary-foreground shadow-[0_14px_30px_-18px_rgb(8_108_104/0.85)] hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
           {pending ? "در حال اتصال به درگاه…" : "پرداخت سفارش"}
         </button>
       ) : null}
       {orderStatus === "PENDING_PAYMENT" ? (
-        <button type="button" onClick={() => void checkOrder()} disabled={checking || pending} className="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-primary/30 px-4 text-sm font-bold text-primary hover:bg-primary-soft/50 disabled:opacity-60">
+        <button type="button" onClick={() => void checkOrder()} disabled={checking || pending} className="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-primary/30 px-4 text-sm font-bold text-primary hover:bg-primary-soft/50 disabled:opacity-60">
           {checking ? "در حال بررسی…" : "بررسی وضعیت پرداخت"}
         </button>
       ) : null}

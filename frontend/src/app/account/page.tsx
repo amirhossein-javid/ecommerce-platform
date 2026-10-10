@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 import { AccountSidebar } from "@/components/account-sidebar";
 import { Container } from "@/components/container";
 import { ProfileForm } from "@/components/profile-form";
+import { StorefrontPageHeader } from "@/components/storefront-page-header";
 import { getCustomerSession } from "@/lib/auth-session";
 
 export const metadata: Metadata = {
-  title: "حساب کاربری | فروشگاه",
+  title: "حساب کاربری | نقش‌جهان",
   description: "مشاهده و ویرایش اطلاعات حساب مشتری",
 };
 
@@ -53,18 +54,14 @@ export default async function AccountPage() {
   }).format(new Date(customer.created_at));
 
   return (
-    <Container className="py-7 sm:py-10 lg:py-14">
-      <header className="mb-7 border-b border-border/75 pb-6 sm:mb-9">
-        <p className="text-sm font-bold text-primary">حساب مشتری</p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground sm:text-4xl">سلام، {displayName}</h1>
-        <p className="mt-3 text-sm leading-7 text-muted-foreground sm:text-base">اطلاعات حساب و راه‌های ارتباطی خود را مشاهده و ویرایش کنید.</p>
-      </header>
+    <Container className="py-6 sm:py-9 lg:py-12">
+      <StorefrontPageHeader eyebrow="حساب مشتری" title={<>سلام، {displayName}</>} description="اطلاعات حساب و راه‌های ارتباطی خود را مشاهده و ویرایش کنید." />
 
       <div className="grid min-w-0 gap-7 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-10">
         <AccountSidebar customer={customer} active="profile" />
 
-        <section className="min-w-0 rounded-xl border border-border/75 bg-surface p-5 sm:p-7 lg:p-8" aria-labelledby="profile-title">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/70 pb-5">
+        <section className="min-w-0 rounded-[1.5rem] border border-gold/40 bg-surface p-5 shadow-card sm:p-7 lg:p-8" aria-labelledby="profile-title">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gold/30 pb-5">
             <div>
               <h2 id="profile-title" className="text-xl font-black text-foreground sm:text-2xl">اطلاعات شخصی</h2>
               <p className="mt-2 text-sm leading-7 text-muted-foreground">این اطلاعات برای ارتباط با شما استفاده می‌شود.</p>

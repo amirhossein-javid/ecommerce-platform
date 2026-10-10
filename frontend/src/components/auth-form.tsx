@@ -57,12 +57,12 @@ function PasswordField({
           maxLength={1024}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "password-error" : undefined}
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 ps-4 pe-20 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-soft"
+          className="min-h-12 w-full rounded-xl border border-gold/40 bg-background px-3 ps-4 pe-20 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-soft"
         />
         <button
           type="button"
           onClick={() => setVisible((current) => !current)}
-          className="absolute inset-y-0 end-1 inline-flex min-w-16 items-center justify-center rounded-md px-2 text-xs font-bold text-primary hover:bg-primary-soft"
+          className="absolute inset-y-1 end-1 inline-flex min-w-16 items-center justify-center rounded-lg px-2 text-xs font-bold text-primary hover:bg-primary-soft"
           aria-pressed={visible}
         >
           {visible ? "پنهان" : "نمایش"}
@@ -150,9 +150,9 @@ export function AuthForm(props: AuthFormProps) {
   };
 
   return (
-    <form onSubmit={submit} className="mt-8 space-y-5" aria-busy={pending}>
+    <form onSubmit={submit} className="mt-7 space-y-5" aria-busy={pending}>
       {isLogin && props.registered ? (
-        <p className="rounded-lg bg-success-soft px-4 py-3 text-sm font-bold text-success" role="status">
+        <p className="rounded-xl border border-success/20 bg-success-soft px-4 py-3 text-sm font-bold text-success" role="status">
           حساب شما ساخته شد. اکنون وارد شوید.
         </p>
       ) : null}
@@ -185,13 +185,13 @@ export function AuthForm(props: AuthFormProps) {
       />
 
       <div className="min-h-7" aria-live="polite">
-        {error ? <p role="alert" className="text-sm font-semibold text-destructive">{error}</p> : null}
+        {error ? <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive-soft px-4 py-3 text-sm font-semibold text-destructive">{error}</p> : null}
       </div>
 
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-primary px-5 text-sm font-extrabold text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-65"
+        className="inline-flex min-h-13 w-full items-center justify-center rounded-full bg-primary px-5 text-sm font-extrabold text-primary-foreground shadow-[0_14px_30px_-18px_rgb(8_108_104/0.85)] transition hover:bg-primary-hover disabled:cursor-wait disabled:opacity-65"
       >
         {pending ? "در حال ارسال…" : isLogin ? "ورود به حساب" : "ساخت حساب"}
       </button>
@@ -233,7 +233,7 @@ function TextField({ name, label, error, hint, ...inputProps }: TextFieldProps) 
         required
         aria-invalid={Boolean(error)}
         aria-describedby={descriptionId}
-        className="mt-2 min-h-12 w-full rounded-lg border border-border bg-surface px-4 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary-soft"
+        className="mt-2 min-h-12 w-full rounded-xl border border-gold/40 bg-background px-4 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary-soft"
         {...inputProps}
       />
       {error ? (

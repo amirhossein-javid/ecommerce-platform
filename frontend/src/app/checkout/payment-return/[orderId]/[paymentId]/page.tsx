@@ -12,7 +12,7 @@ import {
 } from "@/lib/payment-contract";
 
 export const metadata: Metadata = {
-  title: "نتیجهٔ پرداخت | فروشگاه",
+  title: "نتیجهٔ پرداخت | نقش‌جهان",
   description: "بررسی نتیجهٔ پرداخت سفارش با وضعیت ثبت‌شده در فروشگاه",
 };
 
@@ -52,7 +52,7 @@ export default async function PaymentReturnPage({
       <Container className="py-12 sm:py-16">
         <section
           role="alert"
-          className="mx-auto max-w-2xl rounded-xl bg-destructive-soft/45 px-5 py-12 text-center"
+          className="mx-auto max-w-2xl rounded-[1.5rem] border border-destructive/20 bg-destructive-soft/45 px-5 py-12 text-center"
         >
           <h1 className="text-2xl font-black text-foreground">
             بررسی نشست مشتری ممکن نشد
@@ -63,7 +63,7 @@ export default async function PaymentReturnPage({
           </p>
           <Link
             href={`/account/orders/${orderId}`}
-            className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary-hover"
+            className="mt-6 inline-flex min-h-11 items-center rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary-hover"
           >
             مشاهدهٔ وضعیت سفارش
           </Link>
@@ -75,7 +75,7 @@ export default async function PaymentReturnPage({
   const callbackData = callbackFromSearchParams(await searchParams);
 
   return (
-    <Container className="py-10 sm:py-16">
+    <Container className="py-7 sm:py-12 lg:py-16">
       <PaymentReturnView
         callbackData={callbackData}
         orderId={orderId}

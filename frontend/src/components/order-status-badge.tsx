@@ -9,6 +9,5 @@ export function OrderStatusBadge({ status }: { status: OrderStatus }) {
       : tone === "destructive"
         ? "bg-destructive-soft text-destructive"
         : "bg-primary-soft text-primary";
-  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-extrabold ${classes}`}>{ORDER_STATUS_LABELS[status]}</span>;
+  return <span className={`inline-flex rounded-full border border-current/10 px-3 py-1.5 text-xs font-extrabold ${classes}`}>{ORDER_STATUS_LABELS[status]}</span>;
 }
-

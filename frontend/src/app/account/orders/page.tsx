@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AccountSidebar } from "@/components/account-sidebar";
 import { Container } from "@/components/container";
 import { OrderStatusBadge } from "@/components/order-status-badge";
+import { StorefrontPageHeader } from "@/components/storefront-page-header";
 import { getCustomerSession } from "@/lib/auth-session";
 import { formatToman } from "@/lib/format-price";
 import { getCustomerOrders, OrderApiError } from "@/lib/order-api";
@@ -12,7 +13,7 @@ import { parseOrderPage } from "@/lib/order-contract";
 import { classifyOrderFailure } from "@/lib/order-policy";
 
 export const metadata: Metadata = {
-  title: "سفارش‌های من | فروشگاه",
+  title: "سفارش‌های من | نقش‌جهان",
   description: "مشاهدهٔ تاریخچه و وضعیت سفارش‌های مشتری",
 };
 
@@ -26,10 +27,10 @@ function pageHref(page: number) {
 
 function OrdersError({ page, message }: { page: number; message: string }) {
   return (
-    <section className="rounded-xl bg-destructive-soft/45 px-5 py-12 text-center" role="alert">
+    <section className="rounded-[1.5rem] border border-destructive/20 bg-destructive-soft/45 px-5 py-12 text-center" role="alert">
       <h2 className="text-xl font-black text-foreground">دریافت سفارش‌ها ممکن نشد</h2>
       <p className="mt-3 leading-8 text-muted-foreground">{message}</p>
-      <Link href={pageHref(page)} className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary-hover">تلاش دوباره</Link>
+      <Link href={pageHref(page)} className="mt-6 inline-flex min-h-11 items-center rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary-hover">تلاش دوباره</Link>
     </section>
   );
 }
@@ -63,22 +64,18 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const totalPages = Math.max(1, Math.ceil(orders.count / 20));
 
   return (
-    <Container className="py-7 sm:py-10 lg:py-14">
-      <header className="mb-7 border-b border-border/75 pb-6 sm:mb-9">
-        <p className="text-sm font-bold text-primary">حساب مشتری</p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground sm:text-4xl">سفارش‌های من</h1>
-        <p className="mt-3 text-sm leading-7 text-muted-foreground sm:text-base">تاریخچه، مبلغ نهایی و وضعیت واقعی سفارش‌های خود را ببینید.</p>
-      </header>
+    <Container className="py-6 sm:py-9 lg:py-12">
+      <StorefrontPageHeader eyebrow="حساب مشتری" title="سفارش‌های من" description="تاریخچه، مبلغ نهایی و وضعیت واقعی سفارش‌های خود را ببینید." />
 
       <div className="grid min-w-0 gap-7 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-10">
         <AccountSidebar customer={session.customer} active="orders" />
         <main className="min-w-0">
           {orders.count === 0 ? (
-            <section className="rounded-xl border border-border/75 bg-surface px-5 py-14 text-center sm:px-8">
-              <div className="mx-auto grid size-14 place-items-center rounded-xl bg-primary-soft text-2xl text-primary" aria-hidden="true">□</div>
+            <section className="rounded-[1.5rem] border border-gold/40 bg-surface px-5 py-14 text-center shadow-card sm:px-8">
+              <div className="mx-auto grid size-14 place-items-center rounded-full border-2 border-gold bg-background text-2xl text-primary" aria-hidden="true">□</div>
               <h2 className="mt-5 text-2xl font-black text-foreground">هنوز سفارشی ندارید</h2>
               <p className="mt-3 leading-8 text-muted-foreground">پس از ثبت سفارش، وضعیت و جزئیات آن در این صفحه نمایش داده می‌شود.</p>
-              <Link href="/products" className="mt-6 inline-flex min-h-12 items-center rounded-lg bg-primary px-6 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover">مشاهدهٔ محصولات</Link>
+              <Link href="/products" className="mt-6 inline-flex min-h-12 items-center rounded-full bg-primary px-6 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover">مشاهدهٔ محصولات</Link>
             </section>
           ) : (
             <>
@@ -89,8 +86,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                   const firstNames = order.items.slice(0, 2).map((item) => item.product_name).join("، ");
                   const remaining = order.items.length - 2;
                   return (
-                    <article key={order.id} className="rounded-xl border border-border/75 bg-surface p-5 shadow-[0_1px_2px_rgb(var(--shadow-color)/0.04)] sm:p-6">
-                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 pb-4">
+                    <article key={order.id} className="rounded-[1.5rem] border border-gold/40 bg-surface p-5 shadow-card transition motion-safe:hover:-translate-y-0.5 hover:border-gold/70 sm:p-6">
+                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gold/30 pb-4">
                         <div>
                           <p className="text-xs font-bold text-muted-foreground">سفارش شمارهٔ <bdi>{order.id.toLocaleString("fa-IR")}</bdi></p>
                           <time dateTime={order.created_at} className="mt-1 block text-sm font-semibold text-foreground">{date}</time>
@@ -107,16 +104,16 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                           <strong className="mt-1 block tabular-nums text-primary"><bdi>{formatToman(order.grand_total)}</bdi></strong>
                         </div>
                       </div>
-                      <Link href={`/account/orders/${order.id}`} className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-primary/30 px-4 text-sm font-extrabold text-primary hover:bg-primary-soft/50 sm:w-auto">مشاهدهٔ جزئیات سفارش</Link>
+                      <Link href={`/account/orders/${order.id}`} className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-primary/30 px-5 text-sm font-extrabold text-primary hover:bg-primary-soft/50 sm:w-auto">مشاهدهٔ جزئیات سفارش</Link>
                     </article>
                   );
                 })}
               </div>
               {totalPages > 1 ? (
-                <nav aria-label="صفحه‌بندی سفارش‌ها" className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-border/75 pt-6">
-                  {page > 1 ? <Link rel="prev" href={pageHref(page - 1)} className="inline-flex min-h-11 items-center rounded-lg bg-surface-muted px-4 text-sm font-bold hover:bg-primary-soft hover:text-primary">→ صفحهٔ قبل</Link> : <span />}
+                <nav aria-label="صفحه‌بندی سفارش‌ها" className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-gold/35 pt-6">
+                  {page > 1 ? <Link rel="prev" href={pageHref(page - 1)} className="inline-flex min-h-11 items-center rounded-full border border-gold/35 bg-surface px-4 text-sm font-bold hover:bg-primary-soft hover:text-primary">→ صفحهٔ قبل</Link> : <span />}
                   <p className="text-sm font-bold text-muted-foreground">صفحهٔ {page.toLocaleString("fa-IR")} از {totalPages.toLocaleString("fa-IR")}</p>
-                  {page < totalPages ? <Link rel="next" href={pageHref(page + 1)} className="inline-flex min-h-11 items-center rounded-lg bg-surface-muted px-4 text-sm font-bold hover:bg-primary-soft hover:text-primary">صفحهٔ بعد ←</Link> : <span />}
+                  {page < totalPages ? <Link rel="next" href={pageHref(page + 1)} className="inline-flex min-h-11 items-center rounded-full border border-gold/35 bg-surface px-4 text-sm font-bold hover:bg-primary-soft hover:text-primary">صفحهٔ بعد ←</Link> : <span />}
                 </nav>
               ) : null}
             </>
@@ -126,4 +123,3 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     </Container>
   );
 }
-

@@ -127,10 +127,10 @@ function AddressForm({ address, onCancel, onSaved }: AddressFormProps) {
   return (
     <form
       onSubmit={submit}
-      className="rounded-xl border border-border/80 bg-surface p-5 sm:p-7"
+      className="rounded-[1.25rem] border border-gold/40 bg-background p-5 sm:p-7"
       aria-busy={pending}
     >
-      <div className="flex items-start justify-between gap-4 border-b border-border/70 pb-4">
+      <div className="flex items-start justify-between gap-4 border-b border-gold/30 pb-4">
         <div>
           <h2 className="text-lg font-black text-foreground">
             {address ? "ویرایش آدرس" : "افزودن آدرس جدید"}
@@ -143,7 +143,7 @@ function AddressForm({ address, onCancel, onSaved }: AddressFormProps) {
           type="button"
           onClick={onCancel}
           disabled={pending}
-          className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-bold text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+          className="inline-flex min-h-11 items-center rounded-full px-3 text-sm font-bold text-muted-foreground hover:bg-surface-muted hover:text-foreground"
         >
           انصراف
         </button>
@@ -238,7 +238,7 @@ function AddressForm({ address, onCancel, onSaved }: AddressFormProps) {
             rows={4}
             aria-invalid={Boolean(fieldErrors.address)}
             aria-describedby={fieldErrors.address ? "address-error" : undefined}
-            className="mt-2 w-full resize-y rounded-lg border border-border bg-surface px-4 py-3 text-sm leading-7 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-soft"
+            className="mt-2 w-full resize-y rounded-xl border border-gold/40 bg-surface px-4 py-3 text-sm leading-7 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-soft"
           />
           {fieldErrors.address ? (
             <p id="address-error" className="mt-1.5 text-xs font-semibold text-destructive">
@@ -251,19 +251,19 @@ function AddressForm({ address, onCancel, onSaved }: AddressFormProps) {
       <div className="mt-5 min-h-7" aria-live="polite">
         {error ? <p role="alert" className="text-sm font-semibold text-destructive">{error}</p> : null}
       </div>
-      <div className="mt-3 flex flex-col-reverse gap-3 border-t border-border/70 pt-5 sm:flex-row sm:justify-end">
+      <div className="mt-3 flex flex-col-reverse gap-3 border-t border-gold/30 pt-5 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={onCancel}
           disabled={pending}
-          className="inline-flex min-h-12 items-center justify-center rounded-lg border border-border px-5 text-sm font-bold text-foreground hover:bg-surface-muted"
+          className="inline-flex min-h-12 items-center justify-center rounded-full border border-gold/45 px-5 text-sm font-bold text-foreground hover:bg-surface-muted"
         >
           انصراف
         </button>
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex min-h-12 items-center justify-center rounded-lg bg-primary px-6 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover disabled:cursor-wait disabled:opacity-65"
+          className="inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover disabled:cursor-wait disabled:opacity-65"
         >
           {pending ? "در حال ذخیره…" : address ? "ذخیرهٔ ویرایش" : "ثبت آدرس"}
         </button>
@@ -297,7 +297,7 @@ function AddressField({ name, label, error, hint, ...inputProps }: AddressFieldP
         name={name}
         aria-invalid={Boolean(error)}
         aria-describedby={descriptionId}
-        className="mt-2 min-h-12 w-full rounded-lg border border-border bg-surface px-4 text-sm outline-none transition placeholder:text-muted-foreground/65 focus:border-primary focus:ring-2 focus:ring-primary-soft"
+        className="mt-2 min-h-12 w-full rounded-xl border border-gold/40 bg-surface px-4 text-sm outline-none transition placeholder:text-muted-foreground/65 focus:border-primary focus:ring-2 focus:ring-primary-soft"
         {...inputProps}
       />
       {error ? (
@@ -416,8 +416,8 @@ export function AddressManager() {
   if (loading) {
     return (
       <div aria-busy="true" aria-label="در حال دریافت آدرس‌ها" className="space-y-4">
-        <div className="h-44 animate-pulse rounded-xl bg-surface-muted/70" />
-        <div className="h-44 animate-pulse rounded-xl bg-surface-muted/70" />
+        <div className="h-44 animate-pulse rounded-[1.25rem] border border-gold/30 bg-background" />
+        <div className="h-44 animate-pulse rounded-[1.25rem] border border-gold/30 bg-background" />
       </div>
     );
   }
@@ -435,7 +435,7 @@ export function AddressManager() {
 
   return (
     <section aria-labelledby="addresses-title">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/75 pb-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gold/30 pb-5">
         <div>
           <h2 id="addresses-title" className="text-xl font-black text-foreground sm:text-2xl">آدرس‌های من</h2>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">نشانی‌ها و مشخصات گیرندگان سفارش را مدیریت کنید.</p>
@@ -447,47 +447,47 @@ export function AddressManager() {
             setError("");
             setSuccess("");
           }}
-          className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover"
+          className="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover"
         >
           افزودن آدرس
         </button>
       </div>
 
       <div className="min-h-12 py-3" aria-live="polite">
-        {error ? <p role="alert" className="rounded-lg bg-destructive-soft/60 px-4 py-3 text-sm font-semibold text-destructive">{error}</p> : null}
-        {success ? <p role="status" className="rounded-lg bg-primary-soft/65 px-4 py-3 text-sm font-bold text-primary">{success}</p> : null}
+        {error ? <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive-soft/60 px-4 py-3 text-sm font-semibold text-destructive">{error}</p> : null}
+        {success ? <p role="status" className="rounded-xl border border-primary/15 bg-primary-soft/65 px-4 py-3 text-sm font-bold text-primary">{success}</p> : null}
       </div>
 
       {addresses.length === 0 ? (
-        <div className="rounded-xl bg-surface-muted/50 px-5 py-12 text-center sm:px-8 sm:py-16">
-          <div className="mx-auto grid size-14 place-items-center rounded-xl bg-primary-soft text-2xl text-primary" aria-hidden="true">⌖</div>
+        <div className="rounded-[1.25rem] border border-gold/35 bg-background px-5 py-12 text-center sm:px-8 sm:py-16">
+          <div className="mx-auto grid size-14 place-items-center rounded-full border-2 border-gold bg-surface text-2xl text-primary" aria-hidden="true">⌖</div>
           <h3 className="mt-5 text-xl font-black text-foreground">هنوز آدرسی ثبت نشده است</h3>
           <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-muted-foreground">اولین آدرسی که ثبت کنید، به‌صورت خودکار آدرس پیش‌فرض خواهد بود.</p>
-          <button type="button" onClick={() => setEditing("new")} className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary-hover">ثبت اولین آدرس</button>
+          <button type="button" onClick={() => setEditing("new")} className="mt-6 inline-flex min-h-11 items-center rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary-hover">ثبت اولین آدرس</button>
         </div>
       ) : (
-        <div className="divide-y divide-border/75 border-y border-border/75">
+        <div className="space-y-4">
           {addresses.map((item) => {
             const deleting = pendingAction === `delete-${item.id}`;
             const settingDefault = pendingAction === `default-${item.id}`;
             return (
-              <article key={item.id} className="py-6 first:pt-3">
+              <article key={item.id} className="rounded-[1.25rem] border border-gold/35 bg-background p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-black text-foreground">{item.title || "آدرس بدون عنوان"}</h3>
-                      {item.is_default ? <span className="rounded-md bg-primary-soft px-2 py-1 text-xs font-bold text-primary">پیش‌فرض</span> : null}
+                      {item.is_default ? <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-bold text-primary">پیش‌فرض</span> : null}
                     </div>
                     <p className="mt-3 text-sm font-bold text-foreground">{item.recipient_first_name} {item.recipient_last_name}</p>
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {!item.is_default ? (
-                      <button type="button" onClick={() => mutate(item.id, "default")} disabled={Boolean(pendingAction)} className="inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-bold text-primary hover:bg-primary-soft disabled:opacity-50">
+                      <button type="button" onClick={() => mutate(item.id, "default")} disabled={Boolean(pendingAction)} className="inline-flex min-h-11 items-center rounded-full px-3 text-xs font-bold text-primary hover:bg-primary-soft disabled:opacity-50">
                         {settingDefault ? "در حال تغییر…" : "انتخاب به‌عنوان پیش‌فرض"}
                       </button>
                     ) : null}
-                    <button type="button" onClick={() => setEditing(item)} disabled={Boolean(pendingAction)} className="inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-bold text-foreground hover:bg-surface-muted disabled:opacity-50">ویرایش</button>
-                    <button type="button" onClick={() => setConfirmDelete(item.id)} disabled={Boolean(pendingAction)} className="inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-bold text-destructive hover:bg-destructive-soft disabled:opacity-50">حذف</button>
+                    <button type="button" onClick={() => setEditing(item)} disabled={Boolean(pendingAction)} className="inline-flex min-h-11 items-center rounded-full px-3 text-xs font-bold text-foreground hover:bg-surface-muted disabled:opacity-50">ویرایش</button>
+                    <button type="button" onClick={() => setConfirmDelete(item.id)} disabled={Boolean(pendingAction)} className="inline-flex min-h-11 items-center rounded-full px-3 text-xs font-bold text-destructive hover:bg-destructive-soft disabled:opacity-50">حذف</button>
                   </div>
                 </div>
 
@@ -499,12 +499,12 @@ export function AddressManager() {
                 </dl>
 
                 {confirmDelete === item.id ? (
-                  <div role="alertdialog" aria-modal="false" aria-labelledby={`delete-title-${item.id}`} className="mt-5 rounded-lg bg-destructive-soft/55 p-4">
+                  <div role="alertdialog" aria-modal="false" aria-labelledby={`delete-title-${item.id}`} className="mt-5 rounded-xl border border-destructive/20 bg-destructive-soft/55 p-4">
                     <p id={`delete-title-${item.id}`} className="text-sm font-bold text-foreground">از حذف این آدرس مطمئن هستید؟</p>
                     {item.is_default ? <p className="mt-1 text-xs leading-6 text-muted-foreground">با حذف آدرس پیش‌فرض، آدرس دیگری خودکار جایگزین نمی‌شود.</p> : null}
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => mutate(item.id, "delete")} disabled={deleting} className="inline-flex min-h-11 items-center rounded-lg bg-destructive px-4 text-xs font-bold text-white disabled:opacity-60">{deleting ? "در حال حذف…" : "بله، حذف شود"}</button>
-                      <button type="button" onClick={() => setConfirmDelete(null)} disabled={deleting} className="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 text-xs font-bold text-foreground">انصراف</button>
+                      <button type="button" onClick={() => mutate(item.id, "delete")} disabled={deleting} className="inline-flex min-h-11 items-center rounded-full bg-destructive px-4 text-xs font-bold text-white disabled:opacity-60">{deleting ? "در حال حذف…" : "بله، حذف شود"}</button>
+                      <button type="button" onClick={() => setConfirmDelete(null)} disabled={deleting} className="inline-flex min-h-11 items-center rounded-full border border-gold/40 bg-surface px-4 text-xs font-bold text-foreground">انصراف</button>
                     </div>
                   </div>
                 ) : null}
