@@ -5,12 +5,22 @@ import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { Container } from "@/components/container";
 import { ProductGallery } from "@/components/product-gallery";
+import { ProductReviews } from "@/components/product-reviews";
 import {
   CatalogApiError,
   getProduct,
   type ProductDetail,
 } from "@/lib/catalog-api";
 import { formatToman } from "@/lib/format-price";
+import { getCustomerSession } from "@/lib/auth-session";
+import {
+  fetchProductReviewAggregate,
+  fetchPublicProductReviews,
+} from "@/lib/review-api";
+import type {
+  ProductReviewAggregate,
+  PublicProductReview,
+} from "@/lib/review-contract";
 
 type ProductDetailPageProps = {
   params: Promise<{ slug: string }>;
@@ -114,6 +124,31 @@ export default async function ProductDetailPage({
   }
 
   const description = product.description.trim();
+  let reviews: PublicProductReview[] = [];
+  let aggregate: ProductReviewAggregate = {
+    average_rating: null,
+    review_count: 0,
+  };
+  let publicError = false;
+  const [reviewResult, session] = await Promise.all([
+    Promise.all([
+      fetchPublicProductReviews(product.slug),
+      fetchProductReviewAggregate(product.slug),
+    ]).catch(() => null),
+    getCustomerSession(),
+  ]);
+  if (reviewResult) {
+    reviews = reviewResult[0].results;
+    aggregate = reviewResult[1];
+  } else {
+    publicError = true;
+  }
+  const accountState =
+    session.state === "customer"
+      ? "customer"
+      : session.state === "guest"
+        ? "guest"
+        : "blocked";
 
   return (
     <Container className="py-5 sm:py-8 lg:py-11">
@@ -276,6 +311,14 @@ export default async function ProductDetailPage({
           ) : null}
         </aside>
       </div>
+      <ProductReviews
+        key={`${product.slug}:${aggregate.review_count}:${aggregate.average_rating ?? "empty"}:${reviews.map((review) => review.id).join(",")}`}
+        productSlug={product.slug}
+        reviews={reviews}
+        aggregate={aggregate}
+        publicError={publicError}
+        accountState={accountState}
+      />
     </Container>
   );
 }

@@ -6,9 +6,8 @@ This repository is a production-oriented e-commerce monorepo. The Django/DRF
 backend is feature-complete for the current implemented scope,
 production-hardened, and should be treated as a stable contract. The Next.js
 storefront implements the customer journey from catalog discovery through
-account, cart, checkout, payment handoff/result, and owned order history/detail.
-The next planned product feature is customer product reviews and moderation;
-it is not implemented yet.
+account, cart, checkout, payment handoff/result, owned order history/detail, and
+customer product reviews with administrator moderation.
 
 Read these sources before changing the areas they govern:
 
@@ -256,7 +255,8 @@ product detail, search/filter/sort/pagination, registration/login/logout and
 profile, customer addresses, guest/authenticated cart with explicit login merge,
 authenticated checkout, payment initiation/return handling, the immediate
 post-checkout result, and paginated owned order history/detail with eligible
-payment resumption.
+payment resumption. Product detail includes approved review listing and
+aggregates, authenticated submission, own moderation status, and deletion.
 
 The storefront uses the established Naghsh-e Jahan visual system: Persian RTL,
 local Vazirmatn, ivory surfaces, Persian blue/lapis, turquoise, restrained gold,
@@ -286,17 +286,16 @@ demonstrated correctness, security, or required integration/contract gap; a BFF
 responsibility; a deployment issue; or a nice-to-have. Change the frozen backend
 only for a demonstrated gap in the first category.
 
-### Planned product reviews (not implemented)
+### Product reviews
 
-The agreed next feature allows any authenticated storefront customer to submit
-a product review with an integer rating from 1 through 5 and required review
-text. The author must be derived from the authenticated customer's profile;
-clients must not choose or override it. A review requires administrator approval
-before public visibility, and public aggregates must include approved reviews
-only. No review model, API, moderation workflow, aggregate response shape, or
-storefront form/list currently exists. Inspect and design those contracts before
-implementation rather than inferring them from the static homepage testimonial
-content.
+Any authenticated storefront customer may submit one existing review per
+product, with an integer rating from 1 through 5 and required text. Author and
+initial `PENDING` status are server-derived. Customers may read their own status
+and delete, but cannot edit; deletion permits a fresh pending submission. Admin
+moderation uses explicit approve/reject actions and requires the model change
+permission, not merely `is_staff`. Public lists and aggregates include
+`APPROVED` reviews only. The static homepage testimonial content remains
+independent from product reviews.
 
 ## Production and Security Boundaries
 

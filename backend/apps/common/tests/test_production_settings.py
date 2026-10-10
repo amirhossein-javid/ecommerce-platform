@@ -146,6 +146,7 @@ def test_production_settings_apply_security_contract():
             "payment_initiate": "10/minute",
             "payment_verify": "20/minute",
             "bale_webhook": "300/minute",
+            "review_mutation": "10/hour",
         },
         "MIDDLEWARE": [
             "django.middleware.security.SecurityMiddleware",

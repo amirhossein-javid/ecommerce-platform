@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import DEFAULT_DB_ALIAS, connections, models, router, transaction
 from django.db.models import F, Q
 from django.db.models.functions import Lower
@@ -233,6 +233,61 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ProductReview(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="reviews",
+    )
+    customer = models.ForeignKey(
+        "accounts.CustomerProfile",
+        on_delete=models.CASCADE,
+        related_name="product_reviews",
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=(MinValueValidator(1), MaxValueValidator(5)),
+    )
+    comment = models.TextField(max_length=5000)
+    status = models.CharField(
+        max_length=8,
+        choices=Status,
+        default=Status.PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("product", "customer"),
+                name="products_review_product_customer_unique",
+            ),
+            models.CheckConstraint(
+                condition=Q(rating__gte=1, rating__lte=5),
+                name="products_review_rating_between_1_and_5",
+            ),
+            models.CheckConstraint(
+                condition=Q(comment__regex=r"\S"),
+                name="products_review_comment_not_blank",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("product", "status", "-created_at"),
+                name="products_review_public_idx",
+            )
+        ]
+        ordering = ("-created_at", "-pk")
+
+    def __str__(self):
+        return f"Review {self.pk} for {self.product}"
 
 
 def product_image_upload_to(instance, filename):

@@ -1,16 +1,27 @@
-from django.db.models import Prefetch
+from decimal import ROUND_HALF_UP, Decimal
+
+from django.db import IntegrityError, transaction
+from django.db.models import Avg, Count, Prefetch
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import filters
+from rest_framework import filters, status
+from rest_framework.exceptions import APIException, NotFound
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .models import Category, Product, ProductImage
+from apps.accounts.models import CustomerProfile
+
+from .models import Category, Product, ProductImage, ProductReview
 from .serializers import (
     CategorySerializer,
+    OwnProductReviewSerializer,
     ProductDetailSerializer,
     ProductListFilterSerializer,
     ProductListSerializer,
+    ProductReviewAggregateSerializer,
+    PublicProductReviewSerializer,
 )
 
 
@@ -123,3 +134,134 @@ class ProductDetailView(RetrieveAPIView):
             )
         )
     )
+
+
+class ProductReviewPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 50
+
+
+def get_public_product(slug):
+    try:
+        return Product.objects.get(
+            slug=slug,
+            status=Product.Status.ACTIVE,
+            category__is_active=True,
+        )
+    except Product.DoesNotExist as exc:
+        raise NotFound("Product not found.") from exc
+
+
+class DuplicateProductReview(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "A review already exists for this product."
+    default_code = "duplicate_review"
+
+
+@extend_schema_view(get=extend_schema(tags=["Product Reviews"]))
+class PublicProductReviewListView(ListAPIView):
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+    serializer_class = PublicProductReviewSerializer
+    pagination_class = ProductReviewPagination
+
+    def get_queryset(self):
+        product = get_public_product(self.kwargs["slug"])
+        return ProductReview.objects.filter(
+            product=product,
+            status=ProductReview.Status.APPROVED,
+        ).select_related("customer")
+
+
+class ProductReviewAggregateView(APIView):
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+
+    @extend_schema(
+        responses={status.HTTP_200_OK: ProductReviewAggregateSerializer},
+        tags=["Product Reviews"],
+    )
+    def get(self, request, slug):
+        product = get_public_product(slug)
+        aggregate = ProductReview.objects.filter(
+            product=product,
+            status=ProductReview.Status.APPROVED,
+        ).aggregate(
+            average_rating=Avg("rating"),
+            review_count=Count("id"),
+        )
+        average = aggregate["average_rating"]
+        if average is not None:
+            average = Decimal(average).quantize(
+                Decimal("0.1"),
+                rounding=ROUND_HALF_UP,
+            )
+        serializer = ProductReviewAggregateSerializer(
+            {"average_rating": average, "review_count": aggregate["review_count"]}
+        )
+        return Response(serializer.data)
+
+
+class OwnProductReviewView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get_throttles(self):
+        self.throttle_scope = (
+            "review_mutation" if self.request.method in {"POST", "DELETE"} else None
+        )
+        return super().get_throttles()
+
+    def get_customer_profile(self):
+        try:
+            return CustomerProfile.objects.get(user=self.request.user)
+        except CustomerProfile.DoesNotExist as exc:
+            raise NotFound("Customer profile not found.") from exc
+
+    def get_review(self, *, product, customer):
+        try:
+            return ProductReview.objects.get(product=product, customer=customer)
+        except ProductReview.DoesNotExist as exc:
+            raise NotFound("Review not found.") from exc
+
+    @extend_schema(
+        responses={status.HTTP_200_OK: OwnProductReviewSerializer},
+        tags=["Product Reviews"],
+    )
+    def get(self, request, slug):
+        product = get_public_product(slug)
+        customer = self.get_customer_profile()
+        review = self.get_review(product=product, customer=customer)
+        return Response(OwnProductReviewSerializer(review).data)
+
+    @extend_schema(
+        request=OwnProductReviewSerializer,
+        responses={status.HTTP_201_CREATED: OwnProductReviewSerializer},
+        tags=["Product Reviews"],
+    )
+    def post(self, request, slug):
+        product = get_public_product(slug)
+        customer = self.get_customer_profile()
+        serializer = OwnProductReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                review = serializer.save(product=product, customer=customer)
+        except IntegrityError as exc:
+            raise DuplicateProductReview from exc
+        return Response(
+            OwnProductReviewSerializer(review).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        request=None,
+        responses={status.HTTP_204_NO_CONTENT: None},
+        tags=["Product Reviews"],
+    )
+    def delete(self, request, slug):
+        product = get_public_product(slug)
+        customer = self.get_customer_profile()
+        review = self.get_review(product=product, customer=customer)
+        review.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -21,21 +21,22 @@ explicit cart merge, transactional checkout and inventory reservations, owned
 order history/detail and cancellation, fulfillment lifecycle, payments, Bale
 verification/webhooks, refund tracking, and operator administration. Django is
 authoritative for identity, ownership, prices, stock, totals, lifecycle state,
-and payment truth.
+payment truth, and review moderation.
 
 The Next.js storefront implements the Persian RTL homepage, catalog discovery,
 search/filter/sort/pagination, product detail and add-to-cart, guest and customer
 carts, authentication, account/profile/address management, checkout, payment
 handoff and authoritative result handling, and paginated customer order
-history/detail. Its thin same-origin BFF stores JWTs and the guest-cart token in
+history/detail. Product detail also includes approved customer reviews, rating
+aggregates, authenticated submission, moderation-status display, and deletion.
+Its thin same-origin BFF stores JWTs and the guest-cart token in
 HttpOnly cookies, enforces origin checks on mutations, serializes refresh-token
 rotation, and keeps personalized responses private/no-store. Detailed endpoint
 sequences and ownership/error behavior belong in `FRONTEND_HANDOFF.md` rather
 than being duplicated here.
 
-The next planned feature is product reviews and administrator moderation. It is
-not implemented. Its agreed requirements and the contracts that remain to be
-designed are recorded in `FRONTEND_HANDOFF.md`.
+Product-review endpoint shapes, the no-edit lifecycle, moderation rules, and
+frontend integration details are recorded in `FRONTEND_HANDOFF.md`.
 
 ## Local setup with Docker
 
@@ -168,9 +169,10 @@ in the CSRF list.
 
 ### Application request throttling
 
-Abuse-sensitive authentication, cart mutation, checkout, payment, and Bale
-webhook endpoints use DRF scoped throttles. Anonymous scopes are keyed by client
-IP and authenticated commerce scopes by user ID. The limits are configured with:
+Abuse-sensitive authentication, cart mutation, checkout, payment, review
+mutation, and Bale webhook endpoints use DRF scoped throttles. Anonymous scopes
+are keyed by client IP and authenticated commerce scopes by user ID. The limits
+are configured with:
 
 - `DJANGO_THROTTLE_AUTH_REGISTER_RATE`
 - `DJANGO_THROTTLE_AUTH_LOGIN_RATE`
@@ -180,6 +182,7 @@ IP and authenticated commerce scopes by user ID. The limits are configured with:
 - `DJANGO_THROTTLE_PAYMENT_INITIATE_RATE`
 - `DJANGO_THROTTLE_PAYMENT_VERIFY_RATE`
 - `DJANGO_THROTTLE_BALE_WEBHOOK_RATE`
+- `DJANGO_THROTTLE_REVIEW_MUTATION_RATE`
 
 Rates use DRF's positive `<requests>/<period>` format, such as `10/minute`.
 By default `DJANGO_THROTTLE_NUM_PROXIES=0`, so client-supplied

@@ -1,7 +1,9 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import Category, Product, ProductImage
+from apps.accounts.serializers import RejectInputFieldsMixin
+
+from .models import Category, Product, ProductImage, ProductReview
 
 
 class CategorySummarySerializer(serializers.ModelSerializer):
@@ -104,3 +106,69 @@ class ProductListFilterSerializer(serializers.Serializer):
                 {"max_price": "Must be greater than or equal to min_price."}
             )
         return attrs
+
+
+class PublicProductReviewSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductReview
+        fields = ("id", "rating", "comment", "author_name", "created_at")
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField())
+    def get_author_name(self, obj):
+        display_name = f"{obj.customer.first_name} {obj.customer.last_name}".strip()
+        return display_name or "مشتری نقش‌جهان"
+
+
+class OwnProductReviewSerializer(
+    RejectInputFieldsMixin,
+    serializers.ModelSerializer,
+):
+    forbidden_fields = frozenset(
+        {
+            "id",
+            "product",
+            "product_id",
+            "customer",
+            "customer_id",
+            "author",
+            "author_id",
+            "status",
+            "created_at",
+            "updated_at",
+        }
+    )
+
+    class Meta:
+        model = ProductReview
+        fields = (
+            "id",
+            "rating",
+            "comment",
+            "status",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "status", "created_at", "updated_at")
+        extra_kwargs = {
+            "rating": {"required": True},
+            "comment": {"required": True, "allow_blank": False},
+        }
+
+    def validate_comment(self, value):
+        comment = value.strip()
+        if not comment:
+            raise serializers.ValidationError("This field may not be blank.")
+        return comment
+
+
+class ProductReviewAggregateSerializer(serializers.Serializer):
+    average_rating = serializers.DecimalField(
+        max_digits=2,
+        decimal_places=1,
+        allow_null=True,
+        read_only=True,
+    )
+    review_count = serializers.IntegerField(min_value=0, read_only=True)

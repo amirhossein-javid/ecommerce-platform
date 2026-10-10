@@ -1,6 +1,6 @@
 from django import forms
-from django.contrib import admin
-from django.core.exceptions import ValidationError
+from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import router, transaction
 from django.db.models import Prefetch, Sum
 from django.forms.models import BaseInlineFormSet
@@ -11,6 +11,7 @@ from .models import (
     Category,
     Product,
     ProductImage,
+    ProductReview,
     lock_category_parent_structure,
 )
 
@@ -229,3 +230,113 @@ class ProductAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="In stock")
     def in_stock(self, obj):
         return obj.stock_quantity > 0
+
+
+@admin.register(ProductReview)
+class ProductReviewAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "product",
+        "customer",
+        "rating",
+        "status",
+        "created_at",
+        "updated_at",
+    )
+    list_display_links = ("id",)
+    list_filter = (
+        "status",
+        ("product", admin.RelatedOnlyFieldListFilter),
+        "rating",
+        "created_at",
+    )
+    search_fields = (
+        "product__name",
+        "product__slug",
+        "customer__user__email",
+        "customer__first_name",
+        "customer__last_name",
+        "comment",
+    )
+    list_select_related = ("product", "customer", "customer__user")
+    ordering = ("-created_at", "-pk")
+    fields = (
+        "product",
+        "customer_display_name",
+        "rating",
+        "comment",
+        "status",
+        "created_at",
+        "updated_at",
+    )
+    readonly_fields = fields
+    actions = ("approve_reviews", "reject_reviews")
+    date_hierarchy = "created_at"
+    list_per_page = 50
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        if obj is not None:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(
+            request,
+            obj,
+        ) or super().has_change_permission(request, obj)
+
+    @admin.display(description="Customer")
+    def customer_display_name(self, obj):
+        display_name = f"{obj.customer.first_name} {obj.customer.last_name}".strip()
+        return display_name or f"Customer #{obj.customer_id}"
+
+    @admin.action(
+        description="Approve selected pending reviews",
+        permissions=("change",),
+    )
+    def approve_reviews(self, request, queryset):
+        self._moderate_pending(
+            request=request,
+            queryset=queryset,
+            target_status=ProductReview.Status.APPROVED,
+        )
+
+    @admin.action(
+        description="Reject selected pending reviews",
+        permissions=("change",),
+    )
+    def reject_reviews(self, request, queryset):
+        self._moderate_pending(
+            request=request,
+            queryset=queryset,
+            target_status=ProductReview.Status.REJECTED,
+        )
+
+    def _moderate_pending(self, *, request, queryset, target_status):
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
+        with transaction.atomic():
+            changed = queryset.filter(status=ProductReview.Status.PENDING).update(
+                status=target_status,
+                updated_at=timezone.now(),
+            )
+        skipped = queryset.count() - changed
+        if changed:
+            self.message_user(
+                request,
+                f"{changed} pending review(s) marked as {target_status}.",
+                level=messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f"{skipped} non-pending review(s) were left unchanged.",
+                level=messages.WARNING,
+            )
