@@ -103,7 +103,7 @@ export function AddToCartButton({
             <div
               role="group"
               aria-labelledby="product-quantity-label"
-              className="mt-2 inline-flex min-h-11 items-center overflow-hidden rounded-lg border border-border bg-surface"
+              className="mt-2 inline-flex min-h-11 items-center overflow-hidden rounded-full border border-gold/45 bg-background"
             >
               <button
                 type="button"
@@ -150,7 +150,7 @@ export function AddToCartButton({
         type="button"
         onClick={addToCart}
         disabled={pending}
-        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-extrabold text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-65"
+        className="inline-flex min-h-13 w-full items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-extrabold text-primary-foreground shadow-[0_14px_30px_-18px_rgb(8_108_104/0.85)] transition hover:bg-primary-hover hover:shadow-card disabled:cursor-wait disabled:opacity-65"
       >
         <svg
           aria-hidden="true"

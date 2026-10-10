@@ -31,7 +31,7 @@ function CategoryLinks({
 }: Omit<CatalogControlsProps, "resultCount">) {
   if (categoriesUnavailable) {
     return (
-      <p className="rounded-lg bg-surface-muted px-3 py-4 text-sm leading-7 text-muted-foreground">
+      <p className="rounded-xl border border-gold/25 bg-background px-3 py-4 text-sm leading-7 text-muted-foreground">
         دسته‌بندی‌ها موقتاً در دسترس نیستند. جست‌وجو و مرتب‌سازی همچنان قابل
         استفاده است.
       </p>
@@ -39,7 +39,7 @@ function CategoryLinks({
   }
 
   const linkClasses =
-    "flex min-h-11 items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors";
+    "flex min-h-11 items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition-colors";
 
   return (
     <nav aria-label="فیلتر دسته‌بندی">
@@ -50,8 +50,8 @@ function CategoryLinks({
             aria-current={query.category ? undefined : "page"}
             className={`${linkClasses} ${
               query.category
-                ? "text-muted-foreground hover:bg-primary-soft/60 hover:text-primary"
-                : "bg-primary text-primary-foreground"
+                ? "text-muted-foreground hover:bg-background hover:text-primary"
+                : "bg-primary text-primary-foreground shadow-sm"
             }`}
           >
             همهٔ محصولات
@@ -70,8 +70,8 @@ function CategoryLinks({
                 aria-current={isActive ? "page" : undefined}
                 className={`${linkClasses} ${
                   isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-primary-soft/60 hover:text-primary"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-background hover:text-primary"
                 }`}
               >
                 <span className="min-w-0 truncate">{category.name}</span>
@@ -141,7 +141,7 @@ export function CatalogDiscovery({
         جست‌وجوی محصولات
       </h2>
 
-      <div className="rounded-xl bg-surface-muted/60 p-2 sm:p-2.5">
+      <div className="mx-auto max-w-4xl rounded-[1.5rem] border border-gold/45 bg-surface p-2 shadow-card sm:p-2.5">
         <form action="/products" method="get" role="search">
           {query.category ? (
             <input type="hidden" name="category" value={query.category} />
@@ -152,7 +152,7 @@ export function CatalogDiscovery({
           <label htmlFor="catalog-search" className="sr-only">
             جست‌وجوی محصولات
           </label>
-          <div className="flex min-w-0 gap-2">
+          <div className="flex min-w-0 flex-col gap-2 min-[430px]:flex-row">
             <div className="relative min-w-0 flex-1">
               <span
                 aria-hidden="true"
@@ -171,12 +171,12 @@ export function CatalogDiscovery({
                 maxLength={MAX_CATALOG_SEARCH_LENGTH}
                 placeholder="جست‌وجو در محصولات"
                 enterKeyHint="search"
-                className="min-h-12 w-full min-w-0 rounded-lg border border-border/80 bg-surface ps-11 pe-3 text-sm font-semibold text-foreground transition-colors placeholder:text-muted-foreground/80 hover:border-primary/30 sm:text-base"
+                className="catalog-search-field min-h-12 w-full min-w-0 rounded-full border border-transparent bg-background ps-11 pe-4 text-sm font-semibold text-foreground transition-colors placeholder:text-muted-foreground/80 hover:border-gold/55 focus:border-primary sm:text-base"
               />
             </div>
             <button
               type="submit"
-              className="min-h-12 shrink-0 rounded-lg bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover sm:px-6"
+              className="min-h-12 shrink-0 rounded-full bg-primary px-6 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover sm:px-8"
             >
               جست‌وجو
             </button>
@@ -195,7 +195,7 @@ export function CatalogDiscovery({
                 <Link
                   href={item.href}
                   aria-label={`حذف ${item.label}`}
-                  className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-lg bg-primary-soft/70 px-3 text-xs font-bold text-primary transition-colors hover:bg-primary-soft"
+                  className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border border-primary/15 bg-primary-soft/70 px-3 text-xs font-bold text-primary transition-colors hover:bg-primary-soft"
                 >
                   <span className="truncate">{item.label}</span>
                   <span aria-hidden="true" className="text-base leading-none">
@@ -207,7 +207,7 @@ export function CatalogDiscovery({
           </ul>
           <Link
             href="/products"
-            className="inline-flex min-h-10 w-fit items-center rounded-md px-2 text-sm font-bold text-primary transition-colors hover:bg-primary-soft/65"
+            className="inline-flex min-h-10 w-fit items-center rounded-full px-3 text-sm font-bold text-primary transition-colors hover:bg-primary-soft/65"
           >
             پاک‌کردن همه
           </Link>
@@ -224,8 +224,8 @@ export function CatalogSidebar({
 }: Omit<CatalogControlsProps, "resultCount">) {
   return (
     <aside aria-labelledby="catalog-sidebar-title" className="hidden lg:block">
-      <div className="sticky top-24 rounded-xl border border-border/75 bg-surface p-4">
-        <div className="mb-4 flex min-h-10 items-center justify-between border-b border-border/70 pb-3">
+      <div className="sticky top-24 rounded-[1.5rem] border border-gold/40 bg-surface p-4 shadow-card">
+        <div className="mb-4 flex min-h-10 items-center justify-between border-b border-gold/30 pb-3">
           <h2
             id="catalog-sidebar-title"
             className="text-base font-extrabold text-foreground"
@@ -235,7 +235,7 @@ export function CatalogSidebar({
           {query.category ? (
             <Link
               href={catalogHref(query, { category: "", page: 1 })}
-              className="rounded-md px-2 py-1 text-xs font-bold text-primary transition-colors hover:bg-primary-soft"
+              className="rounded-full px-3 py-1 text-xs font-bold text-primary transition-colors hover:bg-primary-soft"
             >
               پاک‌کردن
             </Link>
@@ -258,7 +258,7 @@ export function CatalogToolbar({
   resultCount,
 }: CatalogControlsProps) {
   return (
-    <div className="flex min-w-0 flex-col gap-3 border-y border-border/75 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex min-w-0 flex-col gap-3 rounded-[1.25rem] border border-gold/35 bg-surface px-3 py-3 shadow-[0_12px_28px_-26px_rgb(var(--shadow-color)/0.4)] sm:flex-row sm:items-center sm:justify-between sm:px-4">
       <div className="flex min-w-0 items-center gap-3">
         <MobileFilterDrawer activeCount={Number(Boolean(query.category))}>
           <CategoryLinks
@@ -297,7 +297,7 @@ export function CatalogToolbar({
           id="mobile-ordering"
           name="ordering"
           defaultValue={query.ordering}
-          className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-sm font-semibold text-foreground"
+          className="min-h-11 min-w-0 flex-1 rounded-full border border-gold/45 bg-background px-3 text-sm font-semibold text-foreground"
         >
           {ORDERING_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -307,7 +307,7 @@ export function CatalogToolbar({
         </select>
         <button
           type="submit"
-          className="min-h-11 shrink-0 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
+          className="min-h-11 shrink-0 rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           اعمال
         </button>
@@ -327,10 +327,10 @@ export function CatalogToolbar({
                     page: 1,
                   })}
                   aria-current={isActive ? "page" : undefined}
-                  className={`inline-flex min-h-10 items-center rounded-lg px-3 text-xs font-bold transition-colors ${
+                  className={`inline-flex min-h-10 items-center rounded-full px-3 text-xs font-bold transition-colors ${
                     isActive
-                      ? "bg-primary-soft text-primary"
-                      : "text-muted-foreground hover:bg-surface-muted hover:text-primary"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-background hover:text-primary"
                   }`}
                 >
                   {option.label}

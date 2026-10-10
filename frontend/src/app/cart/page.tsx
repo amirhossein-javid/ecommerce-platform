@@ -7,18 +7,18 @@ import { getCustomerSession } from "@/lib/auth-session";
 import { getCurrentCart } from "@/lib/cart-api";
 
 export const metadata: Metadata = {
-  title: "سبد خرید | فروشگاه",
-  description: "مشاهده و مدیریت سبد خرید",
+  title: "سبد خرید | نقش‌جهان",
+  description: "مشاهده و مدیریت سبد خرید نقش‌جهان",
 };
 
 function CartError() {
   return (
     <section
       role="alert"
-      className="rounded-xl bg-destructive-soft/45 px-5 py-14 text-center sm:px-8"
+      className="rounded-[1.5rem] border border-destructive/20 bg-destructive-soft/45 px-5 py-14 text-center sm:px-8"
     >
       <div
-        className="mx-auto grid size-14 place-items-center rounded-xl bg-destructive-soft text-2xl font-black text-destructive"
+        className="mx-auto grid size-14 place-items-center rounded-full border border-destructive/25 bg-surface text-2xl font-black text-destructive"
         aria-hidden="true"
       >
         !
@@ -31,7 +31,7 @@ function CartError() {
       </p>
       <Link
         href="/cart"
-        className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
+        className="mt-7 inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
       >
         تلاش دوباره
       </Link>
@@ -51,7 +51,7 @@ export default async function CartPage({ searchParams }: CartPageProps) {
     cart = await getCurrentCart();
   } catch {
     return (
-      <Container className="py-7 sm:py-10 lg:py-14">
+      <Container className="py-6 sm:py-9 lg:py-12">
         <CartError />
       </Container>
     );
@@ -65,13 +65,14 @@ export default async function CartPage({ searchParams }: CartPageProps) {
       : undefined;
 
   return (
-    <Container className="py-7 sm:py-10 lg:py-14">
-      <header className="mb-7 border-b border-border/75 pb-6 sm:mb-9">
-        <p className="text-sm font-bold text-primary">خرید شما</p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
+    <Container className="py-6 sm:py-9 lg:py-12">
+      <header className="naghsh-pattern relative isolate mb-7 overflow-hidden rounded-[1.5rem] px-5 py-10 text-center text-white sm:mb-9 sm:px-10 sm:py-12">
+        <div className="absolute inset-0 -z-10 bg-lapis-dark/82" />
+        <p className="flex items-center justify-center gap-3 text-xs font-black text-gold-light sm:text-sm"><span className="size-2 rotate-45 bg-gold" aria-hidden="true" />خرید شما<span className="size-2 rotate-45 bg-gold" aria-hidden="true" /></p>
+        <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-4xl">
           سبد خرید
         </h1>
-        <p className="mt-3 text-sm leading-7 text-muted-foreground sm:text-base">
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
           تعداد کالاها، وضعیت موجودی و جمع قیمت را پیش از ادامه مرور کنید.
         </p>
       </header>

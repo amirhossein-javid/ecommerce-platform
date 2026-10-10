@@ -27,8 +27,8 @@ import {
 } from "@/lib/catalog-query";
 
 export const metadata: Metadata = {
-  title: "محصولات | فروشگاه",
-  description: "فهرست محصولات فروشگاه",
+  title: "محصولات | نقش‌جهان",
+  description: "مرور محصولات و دسته‌بندی‌های فعال فروشگاه نقش‌جهان",
 };
 
 type ProductsPageProps = {
@@ -37,9 +37,9 @@ type ProductsPageProps = {
 
 function EmptyCatalog({ filtered }: { filtered: boolean }) {
   return (
-    <section className="rounded-xl bg-surface-muted/55 px-5 py-14 text-center sm:px-8 sm:py-20">
+    <section className="rounded-[1.5rem] border border-gold/35 bg-surface px-5 py-14 text-center shadow-card sm:px-8 sm:py-20">
       <div
-        className="mx-auto flex size-16 items-center justify-center rounded-xl bg-primary-soft/70 text-primary"
+        className="mx-auto flex size-16 items-center justify-center rounded-full border-2 border-gold bg-background text-primary"
         aria-hidden="true"
       >
         <svg viewBox="0 0 48 48" fill="none" className="size-7">
@@ -68,7 +68,7 @@ function EmptyCatalog({ filtered }: { filtered: boolean }) {
       {filtered ? (
         <Link
           href="/products"
-          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
+          className="mt-7 inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-bold text-primary-foreground shadow-card transition hover:bg-primary-hover"
         >
           نمایش همهٔ محصولات
         </Link>
@@ -87,11 +87,11 @@ function CatalogError({
   return (
     <section
       role="alert"
-      className="rounded-xl bg-destructive-soft/45 px-5 py-12 text-center sm:px-8 sm:py-16"
+      className="rounded-[1.5rem] border border-destructive/20 bg-destructive-soft/45 px-5 py-12 text-center sm:px-8 sm:py-16"
     >
       <div
         aria-hidden="true"
-        className="mx-auto flex size-14 items-center justify-center rounded-xl bg-destructive-soft text-2xl font-black text-destructive"
+        className="mx-auto flex size-14 items-center justify-center rounded-full border border-destructive/25 bg-surface text-2xl font-black text-destructive"
       >
         !
       </div>
@@ -107,7 +107,7 @@ function CatalogError({
       </p>
       <Link
         href={returnHref}
-        className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
+        className="mt-7 inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
       >
         {missingPage ? "بازگشت به صفحهٔ اول نتایج" : "تلاش دوباره"}
       </Link>
@@ -115,21 +115,28 @@ function CatalogError({
   );
 }
 
-function CatalogHeading() {
+function CatalogHeading({ query, categories }: { query: ReturnType<typeof parseCatalogQuery>; categories: Category[] }) {
+  const category = categories.find((item) => item.slug === query.category);
+  const title = category?.name
+    ? category.name
+    : query.search
+      ? `نتایج جست‌وجوی «${query.search}»`
+      : "گنجینهٔ نقش‌جهان";
+
   return (
-    <header className="border-b border-border pb-6 sm:pb-8">
-      <div className="max-w-2xl">
-        <p className="flex items-center gap-3 text-sm font-bold text-primary">
-          <span className="h-px w-8 bg-primary" aria-hidden="true" />
-          کاتالوگ فروشگاه
-        </p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
-          محصولات
-        </h1>
-        <p className="mt-3 max-w-xl text-sm leading-7 text-muted-foreground sm:text-base sm:leading-8">
-          محصولات فعال فروشگاه را با قیمت و وضعیت موجودی به‌روز مرور کنید.
-        </p>
-      </div>
+    <header className="naghsh-pattern relative isolate overflow-hidden rounded-[1.5rem] px-5 py-11 text-center text-white sm:px-10 sm:py-14 lg:py-16">
+      <div className="absolute inset-0 -z-10 bg-lapis-dark/82" />
+      <p className="flex items-center justify-center gap-3 text-xs font-black text-gold-light sm:text-sm">
+        <span className="size-2 rotate-45 bg-gold" aria-hidden="true" />
+        محصولات فروشگاه
+        <span className="size-2 rotate-45 bg-gold" aria-hidden="true" />
+      </p>
+      <h1 className="mx-auto mt-4 max-w-3xl text-3xl font-black leading-[1.45] tracking-tight text-white sm:text-4xl">
+        {title}
+      </h1>
+      <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-white/72 sm:text-base sm:leading-8">
+        محصولات فعال را با تصویر، قیمت و موجودی ثبت‌شده در کاتالوگ مرور کنید.
+      </p>
     </header>
   );
 }
@@ -167,8 +174,8 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   if (!products) {
     return (
-      <Container className="py-7 sm:py-10 lg:py-14">
-        <CatalogHeading />
+      <Container className="py-6 sm:py-9 lg:py-12">
+        <CatalogHeading query={query} categories={categories} />
         <div className="mt-8 sm:mt-10">
           <CatalogError
             missingPage={
@@ -187,11 +194,11 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   );
 
   return (
-    <Container className="py-7 sm:py-10 lg:py-14">
-      <CatalogHeading />
+    <Container className="py-6 sm:py-9 lg:py-12">
+      <CatalogHeading query={query} categories={categories} />
       <CatalogDiscovery categories={categories} query={query} />
 
-      <div className="mt-7 grid min-w-0 gap-7 lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start xl:gap-8">
+      <div className="mt-8 grid min-w-0 gap-7 lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start xl:gap-9">
         <CatalogSidebar
           categories={categories}
           categoriesUnavailable={categoriesUnavailable}
@@ -220,7 +227,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             <>
               <section
                 aria-label="فهرست محصولات"
-                className="mt-7 grid min-w-0 grid-cols-1 gap-x-3 gap-y-8 min-[360px]:grid-cols-2 sm:gap-x-5 sm:gap-y-10 xl:grid-cols-3 xl:gap-x-6"
+                className="mt-7 grid min-w-0 grid-cols-1 gap-5 min-[480px]:grid-cols-2 sm:gap-6 xl:grid-cols-3"
               >
                 {products.results.map((product) => (
                   <ProductCard key={product.id} product={product} />

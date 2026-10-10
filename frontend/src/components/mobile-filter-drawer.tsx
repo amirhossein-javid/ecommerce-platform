@@ -19,7 +19,7 @@ export function MobileFilterDrawer({
         type="button"
         onClick={() => dialogRef.current?.showModal()}
         aria-haspopup="dialog"
-        className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-surface-muted px-3 text-sm font-bold text-foreground transition-colors hover:bg-primary-soft hover:text-primary"
+        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-gold/40 bg-background px-4 text-sm font-bold text-foreground transition-colors hover:bg-primary-soft hover:text-primary"
       >
         <svg
           aria-hidden="true"
@@ -45,17 +45,18 @@ export function MobileFilterDrawer({
       <dialog
         ref={dialogRef}
         aria-labelledby="mobile-filter-title"
-        className="fixed inset-y-0 right-0 m-0 h-dvh max-h-none w-[min(88vw,22rem)] max-w-none overflow-hidden border-0 bg-surface p-0 text-foreground shadow-card backdrop:bg-foreground/35"
+        className="fixed inset-y-0 right-0 m-0 h-dvh max-h-none w-[min(88vw,22rem)] max-w-none overflow-hidden border-0 bg-surface p-0 text-foreground shadow-card backdrop:bg-lapis-dark/55"
       >
         <div className="flex h-full flex-col">
-          <header className="flex min-h-16 items-center justify-between border-b border-border/75 px-4">
-            <h2 id="mobile-filter-title" className="text-lg font-extrabold">
+          <header className="naghsh-pattern relative flex min-h-20 items-center justify-between border-b border-gold/50 px-4 text-white">
+            <div className="absolute inset-0 bg-lapis-dark/80" aria-hidden="true" />
+            <h2 id="mobile-filter-title" className="relative text-lg font-extrabold text-white">
               فیلتر محصولات
             </h2>
             <form method="dialog">
               <button
                 type="submit"
-                className="grid size-11 place-items-center rounded-lg text-2xl text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+                className="relative grid size-11 place-items-center rounded-full border border-gold/45 text-2xl text-white transition-colors hover:bg-white/10"
                 aria-label="بستن فیلترها"
               >
                 <span aria-hidden="true">×</span>
@@ -63,7 +64,7 @@ export function MobileFilterDrawer({
             </form>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <h3 className="mb-3 text-sm font-extrabold text-foreground">
+            <h3 className="mb-3 text-sm font-extrabold text-primary">
               دسته‌بندی
             </h3>
             {children}

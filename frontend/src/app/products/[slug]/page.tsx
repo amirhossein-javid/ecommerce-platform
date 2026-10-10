@@ -40,7 +40,7 @@ export async function generateMetadata({
       product.images.find((image) => image.is_primary) ?? product.images[0];
 
     return {
-      title: `${product.name} | فروشگاه`,
+      title: `${product.name} | نقش‌جهان`,
       description,
       openGraph: {
         title: product.name,
@@ -61,21 +61,21 @@ export async function generateMetadata({
     return {
       title:
         error instanceof CatalogApiError && error.status === 404
-          ? "محصول پیدا نشد | فروشگاه"
-          : "محصول | فروشگاه",
+          ? "محصول پیدا نشد | نقش‌جهان"
+          : "محصول | نقش‌جهان",
     };
   }
 }
 
 function ProductDetailError() {
   return (
-    <Container className="py-10 sm:py-14 lg:py-20">
+    <Container className="py-8 sm:py-12 lg:py-16">
       <section
         role="alert"
-        className="mx-auto max-w-2xl rounded-xl bg-destructive-soft/45 px-6 py-14 text-center sm:px-10"
+        className="mx-auto max-w-2xl rounded-[1.5rem] border border-destructive/20 bg-destructive-soft/45 px-6 py-14 text-center sm:px-10"
       >
         <div
-          className="mx-auto grid size-14 place-items-center rounded-xl bg-destructive-soft text-2xl font-black text-destructive"
+          className="mx-auto grid size-14 place-items-center rounded-full border border-destructive/25 bg-surface text-2xl font-black text-destructive"
           aria-hidden="true"
         >
           !
@@ -88,7 +88,7 @@ function ProductDetailError() {
         </p>
         <Link
           href="/products"
-          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
+          className="mt-7 inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           بازگشت به محصولات
         </Link>
@@ -116,16 +116,16 @@ export default async function ProductDetailPage({
   const description = product.description.trim();
 
   return (
-    <Container className="py-6 sm:py-9 lg:py-12">
+    <Container className="py-5 sm:py-8 lg:py-11">
       <nav
         aria-label="مسیر صفحه"
-        className="mb-6 min-w-0 text-sm text-muted-foreground sm:mb-8"
+        className="mb-5 min-w-0 text-xs text-muted-foreground sm:mb-7 sm:text-sm"
       >
         <ol className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <li>
             <Link
               href="/"
-              className="rounded-sm transition-colors hover:text-primary"
+              className="rounded-full px-2 py-1 transition-colors hover:bg-primary-soft hover:text-primary"
             >
               خانه
             </Link>
@@ -136,7 +136,7 @@ export default async function ProductDetailPage({
           <li>
             <Link
               href="/products"
-              className="rounded-sm transition-colors hover:text-primary"
+              className="rounded-full px-2 py-1 transition-colors hover:bg-primary-soft hover:text-primary"
             >
               محصولات
             </Link>
@@ -153,20 +153,20 @@ export default async function ProductDetailPage({
         </ol>
       </nav>
 
-      <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.32fr)_minmax(15rem,0.8fr)] lg:items-start lg:gap-6 xl:grid-cols-[minmax(17rem,0.88fr)_minmax(26rem,1.35fr)_minmax(17rem,0.77fr)] xl:gap-8">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.35fr)_minmax(16rem,0.83fr)] lg:items-start lg:gap-6 xl:grid-cols-[minmax(17rem,0.82fr)_minmax(27rem,1.35fr)_minmax(18rem,0.83fr)] xl:gap-8">
         <section
           aria-labelledby="product-title"
           className="min-w-0 lg:col-start-1 lg:row-start-1"
         >
           <Link
             href={`/products?category=${encodeURIComponent(product.category.slug)}`}
-            className="inline-flex min-h-10 items-center rounded-lg bg-primary-soft/65 px-3 text-sm font-bold text-primary transition-colors hover:bg-primary-soft"
+            className="inline-flex min-h-10 items-center rounded-full border border-primary/15 bg-primary-soft/70 px-4 text-sm font-bold text-primary transition-colors hover:bg-primary-soft"
           >
             {product.category.name}
           </Link>
           <h1
             id="product-title"
-            className="mt-4 text-2xl font-black leading-[1.55] tracking-tight text-foreground sm:text-3xl lg:text-[1.75rem] xl:text-[2rem]"
+            className="mt-4 text-2xl font-black leading-[1.55] tracking-tight text-foreground sm:text-3xl lg:text-[1.8rem] xl:text-[2.15rem]"
           >
             {product.name}
           </h1>
@@ -178,7 +178,7 @@ export default async function ProductDetailPage({
 
         <section
           aria-labelledby="product-information-title"
-          className="min-w-0 border-t border-border/75 pt-6 lg:col-start-1 lg:row-start-2"
+          className="min-w-0 rounded-[1.25rem] border border-gold/35 bg-surface p-5 shadow-card lg:col-start-1 lg:row-start-2"
         >
           <h2
             id="product-information-title"
@@ -187,7 +187,7 @@ export default async function ProductDetailPage({
             اطلاعات محصول
           </h2>
 
-          <dl className="mt-4 divide-y divide-border/70 border-y border-border/70 text-sm">
+          <dl className="mt-4 divide-y divide-gold/25 border-y border-gold/30 text-sm">
             <div className="flex items-center justify-between gap-4 py-3.5">
               <dt className="text-muted-foreground">دسته‌بندی</dt>
               <dd className="font-extrabold text-foreground">
@@ -222,8 +222,9 @@ export default async function ProductDetailPage({
 
         <aside
           aria-labelledby="purchase-summary-title"
-          className="min-w-0 rounded-xl border border-border/80 bg-surface p-5 lg:sticky lg:top-28 lg:col-start-3 lg:row-span-2 lg:row-start-1 xl:p-6"
+          className="min-w-0 overflow-hidden rounded-[1.5rem] border border-gold/45 bg-surface p-5 shadow-card lg:sticky lg:top-28 lg:col-start-3 lg:row-span-2 lg:row-start-1 xl:p-6"
         >
+          <p className="mb-2 flex items-center gap-2 text-xs font-black text-primary"><span className="size-1.5 rotate-45 bg-gold" aria-hidden="true" /> انتخاب شما</p>
           <h2
             id="purchase-summary-title"
             className="text-base font-black text-foreground"
@@ -231,11 +232,11 @@ export default async function ProductDetailPage({
             خلاصهٔ خرید
           </h2>
 
-          <div className="mt-5 border-y border-border/70 py-5">
+          <div className="mt-5 rounded-[1.1rem] bg-background px-4 py-5">
             <p className="text-sm font-semibold text-muted-foreground">
               قیمت محصول
             </p>
-            <p className="mt-2 break-words text-2xl font-black leading-10 tabular-nums text-primary xl:text-[1.7rem]">
+            <p className="mt-2 break-words text-2xl font-black leading-10 tabular-nums text-lapis xl:text-[1.7rem]">
               <bdi>{formatToman(product.price)}</bdi>
             </p>
           </div>
@@ -266,7 +267,7 @@ export default async function ProductDetailPage({
           </div>
 
           {product.in_stock ? (
-            <div className="mt-6 border-t border-border/70 pt-6">
+            <div className="mt-6 border-t border-gold/30 pt-6">
               <AddToCartButton
                 productPrice={product.price}
                 productSlug={product.slug}

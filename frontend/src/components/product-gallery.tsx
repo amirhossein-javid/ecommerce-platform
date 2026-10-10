@@ -11,8 +11,8 @@ type ProductGalleryProps = {
 
 function GalleryPlaceholder() {
   return (
-    <div className="flex size-full flex-col items-center justify-center gap-4 bg-surface-muted/65 px-6 text-center text-muted-foreground">
-      <span className="flex size-20 items-center justify-center rounded-xl bg-surface/80">
+    <div className="flex size-full flex-col items-center justify-center gap-4 bg-surface-muted/45 px-6 text-center text-muted-foreground">
+      <span className="flex size-20 items-center justify-center rounded-full border-2 border-gold bg-surface/80 text-primary">
         <svg
           aria-hidden="true"
           viewBox="0 0 48 48"
@@ -50,7 +50,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
     return (
       <section
         aria-label="تصاویر محصول"
-        className="overflow-hidden rounded-xl border border-border/80 bg-surface"
+        className="overflow-hidden rounded-[1.5rem] border border-gold/40 bg-surface shadow-card"
       >
         <div className="aspect-square">
           <GalleryPlaceholder />
@@ -73,15 +73,15 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
 
   return (
     <section aria-label="گالری تصاویر محصول" className="min-w-0">
-      <div className="relative overflow-hidden rounded-xl border border-border/80 bg-surface">
-        <div className="aspect-square bg-surface">
+      <div className="relative overflow-hidden rounded-[1.5rem] border border-gold/45 bg-surface shadow-card">
+        <div className="aspect-square bg-[radial-gradient(circle_at_center,var(--surface)_0%,var(--background)_100%)]">
           {/* The media origin remains deployment-owned, so native images avoid a speculative allowlist. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={activeImage.id}
             src={activeImage.image}
             alt={imageAlt}
-            className="size-full object-contain p-4 sm:p-6"
+            className="size-full object-contain p-5 sm:p-8"
             loading={activeIndex === primaryIndex ? "eager" : "lazy"}
           />
         </div>
@@ -91,7 +91,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
             <button
               type="button"
               onClick={showPrevious}
-              className="pointer-events-auto grid size-11 place-items-center rounded-lg border border-border/90 bg-surface/95 text-xl text-foreground shadow-card transition-colors hover:bg-primary hover:text-primary-foreground"
+              className="pointer-events-auto grid size-11 place-items-center rounded-full border border-gold/65 bg-surface/95 text-xl text-lapis shadow-card transition-colors hover:bg-primary hover:text-primary-foreground"
               aria-label="تصویر قبلی"
             >
               <span aria-hidden="true">→</span>
@@ -99,7 +99,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
             <button
               type="button"
               onClick={showNext}
-              className="pointer-events-auto grid size-11 place-items-center rounded-lg border border-border/90 bg-surface/95 text-xl text-foreground shadow-card transition-colors hover:bg-primary hover:text-primary-foreground"
+              className="pointer-events-auto grid size-11 place-items-center rounded-full border border-gold/65 bg-surface/95 text-xl text-lapis shadow-card transition-colors hover:bg-primary hover:text-primary-foreground"
               aria-label="تصویر بعدی"
             >
               <span aria-hidden="true">←</span>
@@ -132,10 +132,10 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                   onClick={() => setActiveIndex(index)}
                   aria-label={`نمایش ${thumbnailAlt}`}
                   aria-pressed={index === activeIndex}
-                  className={`size-16 shrink-0 overflow-hidden rounded-lg border-2 bg-surface transition-[border-color,opacity] sm:size-20 ${
+                  className={`size-16 shrink-0 overflow-hidden rounded-xl border-2 bg-surface transition-[border-color,opacity,transform] sm:size-20 ${
                     index === activeIndex
-                      ? "border-primary"
-                      : "border-transparent opacity-65 hover:border-border hover:opacity-100"
+                      ? "border-gold shadow-card"
+                      : "border-transparent opacity-65 hover:border-gold/45 hover:opacity-100 motion-safe:hover:-translate-y-0.5"
                   }`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}

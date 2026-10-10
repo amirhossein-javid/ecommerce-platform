@@ -112,12 +112,12 @@ export function CartView({
 
   const mergeNotice = mergeState ? (
     <div
-      className={`mb-5 rounded-lg px-4 py-3 text-sm leading-7 ${
+      className={`mb-5 rounded-[1.25rem] border px-4 py-3 text-sm leading-7 ${
         mergeState === "merged"
-          ? "bg-success-soft font-bold text-success"
+          ? "border-success/20 bg-success-soft font-bold text-success"
           : mergeState === "pending"
-            ? "bg-primary-soft/70 text-foreground"
-            : "bg-destructive-soft/60 text-destructive"
+            ? "border-primary/15 bg-primary-soft/70 text-foreground"
+            : "border-destructive/20 bg-destructive-soft/60 text-destructive"
       }`}
       role={mergeState === "merged" ? "status" : "alert"}
     >
@@ -130,7 +130,7 @@ export function CartView({
             type="button"
             onClick={retryMerge}
             disabled={mergePending}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
           >
             {mergePending ? "در حال تلاش…" : "تلاش دوباره"}
           </button>
@@ -186,13 +186,13 @@ export function CartView({
         {error ? (
           <p
             role="alert"
-            className="mb-5 rounded-lg bg-destructive-soft px-4 py-3 text-sm font-semibold text-destructive"
+            className="mb-5 rounded-[1.25rem] border border-destructive/20 bg-destructive-soft px-4 py-3 text-sm font-semibold text-destructive"
           >
             {error}
           </p>
         ) : null}
-        <section className="rounded-xl bg-surface-muted/55 px-5 py-14 text-center sm:px-8 sm:py-20">
-          <div className="mx-auto grid size-16 place-items-center rounded-xl bg-primary-soft/70 text-primary">
+        <section className="rounded-[1.5rem] border border-gold/40 bg-surface px-5 py-14 text-center shadow-card sm:px-8 sm:py-20">
+          <div className="mx-auto grid size-16 place-items-center rounded-full border-2 border-gold bg-background text-primary">
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
@@ -216,7 +216,7 @@ export function CartView({
           </p>
           <Link
             href="/products"
-            className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
+            className="mt-7 inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary-hover"
           >
             مشاهدهٔ محصولات
           </Link>
@@ -236,16 +236,16 @@ export function CartView({
         {error ? (
           <p
             role="alert"
-            className="rounded-lg bg-destructive-soft px-4 py-3 text-sm font-semibold text-destructive"
+            className="rounded-[1.25rem] border border-destructive/20 bg-destructive-soft px-4 py-3 text-sm font-semibold text-destructive"
           >
             {error}
           </p>
         ) : null}
       </div>
 
-      <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start xl:gap-10">
+      <div className="grid min-w-0 gap-7 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start xl:gap-10">
         <section aria-labelledby="cart-items-title" className="min-w-0">
-          <div className="mb-4 flex items-center justify-between gap-4 border-b border-border/75 pb-4">
+          <div className="mb-4 flex items-center justify-between gap-4 border-b border-gold/35 pb-4">
             <h2
               id="cart-items-title"
               className="text-lg font-black text-foreground"
@@ -257,7 +257,7 @@ export function CartView({
             </p>
           </div>
 
-          <div className="divide-y divide-border/75 border-y border-border/75">
+          <div className="space-y-4">
             {cart.items.map((item) => {
               const pending = pendingItem === item.id;
               const image = item.product.primary_image;
@@ -266,11 +266,11 @@ export function CartView({
                 <article
                   key={item.id}
                   aria-busy={pending}
-                  className="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-4 py-6 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-6"
+                  className="grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] gap-4 rounded-[1.25rem] border border-gold/35 bg-surface p-4 shadow-card sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-6 sm:p-5"
                 >
                   <Link
                     href={`/products/${item.product.slug}`}
-                    className="aspect-square overflow-hidden rounded-xl border border-border/70 bg-surface"
+                    className="aspect-square overflow-hidden rounded-[1rem] border border-gold/35 bg-background"
                     aria-label={`مشاهدهٔ ${item.product.name}`}
                   >
                     {image ? (
@@ -278,7 +278,7 @@ export function CartView({
                       <img
                         src={image.image}
                         alt={image.alt_text || item.product.name}
-                        className="size-full object-contain p-2"
+                        className="size-full object-contain p-2 transition-transform duration-500 hover:scale-105"
                       />
                     ) : (
                       <CartImagePlaceholder />
@@ -298,7 +298,7 @@ export function CartView({
                     </p>
 
                     {!item.is_available ? (
-                      <p className="mt-3 rounded-lg bg-destructive-soft/65 px-3 py-2 text-xs font-semibold leading-6 text-destructive">
+                      <p className="mt-3 rounded-xl border border-destructive/15 bg-destructive-soft/65 px-3 py-2 text-xs font-semibold leading-6 text-destructive">
                         {availabilityMessage(item)}
                       </p>
                     ) : null}
@@ -308,7 +308,7 @@ export function CartView({
                         <p className="mb-1.5 text-xs font-semibold text-muted-foreground">
                           تعداد
                         </p>
-                        <div className="inline-flex min-h-11 items-center overflow-hidden rounded-lg border border-border bg-surface">
+                        <div className="inline-flex min-h-11 items-center overflow-hidden rounded-full border border-gold/45 bg-background">
                           <button
                             type="button"
                             onClick={() =>
@@ -360,7 +360,7 @@ export function CartView({
                       type="button"
                       onClick={() => removeItem(item)}
                       disabled={mutationPending}
-                      className="mt-4 inline-flex min-h-11 w-fit items-center gap-2 rounded-lg px-2 text-sm font-bold text-destructive transition-colors hover:bg-destructive-soft disabled:cursor-wait disabled:opacity-50"
+                      className="mt-4 inline-flex min-h-11 w-fit items-center gap-2 rounded-full px-3 text-sm font-bold text-destructive transition-colors hover:bg-destructive-soft disabled:cursor-wait disabled:opacity-50"
                     >
                       <span aria-hidden="true">×</span>
                       {pending ? "در حال به‌روزرسانی…" : "حذف از سبد"}
@@ -374,7 +374,7 @@ export function CartView({
 
         <aside
           aria-labelledby="cart-summary-title"
-          className="rounded-xl border border-border/80 bg-surface p-5 lg:sticky lg:top-28 xl:p-6"
+          className="overflow-hidden rounded-[1.5rem] border border-gold/45 bg-surface p-5 shadow-card lg:sticky lg:top-28 xl:p-6"
         >
           <h2
             id="cart-summary-title"
@@ -382,12 +382,12 @@ export function CartView({
           >
             خلاصهٔ سفارش
           </h2>
-          <dl className="mt-5 border-y border-border/70 py-4">
+          <dl className="mt-5 rounded-[1.1rem] bg-background px-4 py-5">
             <div className="flex items-center justify-between gap-4">
               <dt className="text-sm text-muted-foreground">
                 جمع {itemCount.toLocaleString("fa-IR")} کالا
               </dt>
-              <dd className="break-words text-end text-lg font-black tabular-nums text-primary">
+              <dd className="break-words text-end text-lg font-black tabular-nums text-lapis">
                 <bdi>{formatToman(cart.subtotal)}</bdi>
               </dd>
             </div>
@@ -407,7 +407,7 @@ export function CartView({
           {!hasUnavailableItems && checkoutState !== "blocked" ? (
             <Link
               href={checkoutState === "customer" ? "/checkout" : "/login"}
-              className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-primary px-5 text-sm font-extrabold text-primary-foreground transition-colors hover:bg-primary-hover"
+              className="mt-6 inline-flex min-h-13 w-full items-center justify-center rounded-full bg-primary px-5 text-sm font-extrabold text-primary-foreground shadow-[0_14px_30px_-18px_rgb(8_108_104/0.85)] transition hover:bg-primary-hover"
             >
               {checkoutState === "customer"
                 ? "ادامه و ثبت سفارش"
@@ -422,7 +422,7 @@ export function CartView({
           ) : null}
           <Link
             href="/products"
-            className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-surface-muted hover:text-primary"
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-full px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-background hover:text-primary"
           >
             ادامهٔ خرید
           </Link>
