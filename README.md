@@ -1,7 +1,7 @@
-# E-commerce API
+# E-commerce monorepo
 
-Production-oriented REST API built with Python 3.12, Django 5.2, Django REST
-Framework, PostgreSQL, and Docker.
+Production-oriented ecommerce application with a Django/DRF API, PostgreSQL,
+and a Next.js App Router storefront/BFF, orchestrated locally with Docker.
 
 The repository is organized as a monorepo. The Django application and its
 Python tooling live in `backend/`, and the Next.js application lives in
@@ -45,6 +45,13 @@ uses Next.js development with Webpack and a one-second file-watch poll so edits
 are detected reliably through Docker Desktop bind mounts. Production builds and
 direct host development keep the Next.js defaults.
 
+Without an explicit environment override, Compose uses
+`apps.payments.gateways.UnavailablePaymentGateway`; it does not include a fake
+payment simulator. A copied `.env.example` selects Bale, but real testing still
+requires the external Bale credentials, public HTTPS webhook, and Mini App flow
+documented below. The frontend must not simulate a successful payment when that
+provider setup is absent.
+
 ## Quality checks
 
 Run these inside the web container:
@@ -61,6 +68,8 @@ Run frontend checks in its container:
 ```bash
 docker compose run --rm --no-deps frontend npm run lint
 docker compose run --rm --no-deps frontend npm run typecheck
+docker compose run --rm --no-deps frontend npm test
+docker compose run --rm --no-deps frontend npm run build
 ```
 
 ## Production settings and security

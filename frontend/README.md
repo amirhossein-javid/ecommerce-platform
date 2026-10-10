@@ -1,6 +1,9 @@
 # E-commerce frontend
 
-پایهٔ رابط کاربری فروشگاه با Next.js App Router، TypeScript و Tailwind CSS.
+رابط کاربری فروشگاه با Next.js App Router، TypeScript و Tailwind CSS. پیاده‌سازی
+فعلی شامل کاتالوگ و جزئیات محصول، احراز هویت و پروفایل، مدیریت آدرس، سبد مهمان
+و مشتری با merge، checkout و آغاز/نتیجهٔ پرداخت است. تاریخچه و جزئیات عمومی
+سفارش‌های حساب مشتری، محدودهٔ Phase 5.3 و هنوز پیاده‌سازی نشده است.
 
 ## اجرای محلی با Docker
 
@@ -34,6 +37,11 @@ URL رسانه‌های storage خارجی بدون تغییر باقی می‌�
 به این مسیر، بخشی از پیکربندی همان provider است و نتیجهٔ نهایی همچنان فقط از
 Django خوانده می‌شود.
 
+Compose در نبود تنظیم صریح provider به `UnavailablePaymentGateway` برمی‌گردد و
+شبیه‌ساز پرداخت داخلی ندارد. فایل نمونهٔ ریشه Bale را انتخاب می‌کند، اما تست
+واقعی آن همچنان به credential، webhook عمومی HTTPS و اجرای Mini App بله نیاز
+دارد؛ callback مرورگر یا SDK به‌تنهایی نشانهٔ موفقیت پرداخت نیست.
+
 ## اجرای مستقل اختیاری
 
 برای اجرای frontend خارج از Docker به Node.js 24 LTS و npm نیاز است:
@@ -51,4 +59,6 @@ npm run dev
 ```bash
 docker compose run --rm --no-deps frontend npm run lint
 docker compose run --rm --no-deps frontend npm run typecheck
+docker compose run --rm --no-deps frontend npm test
+docker compose run --rm --no-deps frontend npm run build
 ```

@@ -4,8 +4,9 @@
 
 This repository is a production-oriented e-commerce monorepo. The Django/DRF
 backend is feature-complete for the current portfolio scope, production-hardened,
-and should be treated as a stable contract. The next development stage is the
-Next.js frontend; it has not been scaffolded yet.
+and should be treated as a stable contract. The Next.js storefront is implemented
+through checkout and payment handoff/result UX; the next planned milestone is
+customer order history and order detail (Phase 5.3).
 
 Read these sources before changing the areas they govern:
 
@@ -36,6 +37,7 @@ ecommerce/
 │   ├── gunicorn.conf.py
 │   ├── manage.py
 │   └── pyproject.toml
+├── frontend/                # Next.js App Router storefront and same-origin BFF
 ├── compose.yaml             # repository-level local orchestration
 ├── .env.example             # repository-level environment contract
 ├── README.md
@@ -43,9 +45,9 @@ ecommerce/
 └── AGENTS.md
 ```
 
-`frontend/` will live beside `backend/`, but does not exist yet. Do not add
-frontend code, placeholder directories, dependencies, or monorepo tooling unless
-the current task explicitly starts that work.
+`frontend/` lives beside `backend/`. Keep its server-first App Router structure
+and add Client Components only for real interaction. Do not add speculative
+directories, dependencies, or monorepo tooling.
 
 The backend uses Python 3.12, Django 5.2, DRF, PostgreSQL, SimpleJWT,
 drf-spectacular, pytest/pytest-django, Ruff, Docker, and Gunicorn. PostgreSQL is
@@ -234,10 +236,10 @@ Commerce concurrency rules are mandatory:
 
 ## Frontend Stage and Boundary
 
-The chosen frontend direction is:
+The current frontend uses:
 
 - Next.js with App Router, TypeScript, and Tailwind CSS.
-- `frontend/` beside `backend/` when scaffolding begins.
+- `frontend/` beside `backend/`, developed through the root Docker Compose stack.
 - Server-first rendering where useful; Client Components only for actual
   interactivity.
 - A thin Next.js BFF/auth boundary. Browser credentials are kept out of
@@ -246,6 +248,13 @@ The chosen frontend direction is:
   the existing JWT Bearer contract.
 - No Redux, TanStack Query, Turborepo, Nx, or other infrastructure unless a
   concrete implementation need justifies it.
+
+Implemented customer-facing scope currently includes the public catalog and
+product detail, registration/login/logout and profile, customer addresses,
+guest/authenticated cart with explicit login merge, authenticated checkout,
+the created-order result, and payment initiation/return handling. Account order
+history and general customer order-detail navigation are not implemented yet;
+they are Phase 5.3. Do not infer completion from the post-checkout result route.
 
 The BFF may handle rendering, secure HttpOnly browser cookies, CSRF/origin
 protection for its cookie-authenticated mutations, server-side API calls,
