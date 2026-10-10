@@ -9,6 +9,10 @@ import {
   ManagementReviewApiError,
 } from "@/lib/management-review-api";
 import {
+  fetchManagementSummary,
+  ManagementOrderApiError,
+} from "@/lib/management-order-api";
+import {
   hasJsonContentType,
   isTrustedMutationRequest,
 } from "@/lib/cart-security";
@@ -34,17 +38,31 @@ export async function POST(request: Request) {
 
   try {
     const tokens = await loginCustomer(input.email, input.password);
+    let accessGranted = false;
+    let accessCheckUnavailable = false;
     try {
-      await fetchManagedReviews(tokens.access, "?page_size=1");
+      await fetchManagementSummary(tokens.access);
+      accessGranted = true;
     } catch (error) {
+      accessCheckUnavailable = !(error instanceof ManagementOrderApiError && error.status === 403);
+    }
+    if (!accessGranted) {
+      try {
+        await fetchManagedReviews(tokens.access, "?page_size=1");
+        accessGranted = true;
+      } catch (error) {
+        accessCheckUnavailable ||= !(error instanceof ManagementReviewApiError && error.status === 403);
+      }
+    }
+    if (!accessGranted) {
       try {
         await logoutCustomer(tokens.refresh);
       } catch {
         // The unexposed refresh token is revoked on a best-effort basis.
       }
-      if (error instanceof ManagementReviewApiError && error.status === 403) {
+      if (!accessCheckUnavailable) {
         return privateManagementJson(
-          { error: "این حساب مجوز مشاهدهٔ مدیریت نظرها را ندارد." },
+          { error: "این حساب مجوز ورود به داشبورد مدیریت را ندارد." },
           403,
         );
       }

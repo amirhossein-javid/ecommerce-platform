@@ -193,12 +193,29 @@ Personal responses are private/no-store, mutations use exact-origin protection,
 JWT refresh stays server-side, and backend validation, duplicate, and throttle
 responses remain authoritative.
 
-The focused panel at `/management/reviews` uses separate `management_access`
-and `management_refresh` HttpOnly cookies so an operator session does not become
-a storefront customer session. Its `/api/management/...` BFF routes validate
-input, enforce exact-origin protection for mutations, refresh tokens server-side,
-and return `private, no-store` responses. Django remains authoritative for all
-permissions, moderation transitions, and reply uniqueness.
+The operations dashboard lives at `/dashboard`, with order operations at
+`/dashboard/orders` and review moderation at `/dashboard/reviews`. The legacy
+`/management/reviews` route redirects to the review dashboard. Its Django APIs
+remain under `/api/v1/management/`, and its same-origin BFF routes remain under
+`/api/management/`; UI and API namespaces are intentionally separate.
+
+Order dashboard endpoints require active staff plus explicit Django model
+permissions. Viewing summary/list/detail requires `orders.view_order` or
+`orders.change_order`; lifecycle and refund commands require
+`orders.change_order`; shipment editing independently requires
+`orders.change_shipment`. Commands call the existing locked domain services and
+never write status directly. Summary revenue counts each order with at least one
+successful payment once, pending fulfillment covers paid, processing, and
+shipped orders, and low stock means an active product with physical stock of
+five or fewer.
+
+The dashboard uses separate `management_access` and `management_refresh`
+HttpOnly cookies so an operator session does not become a storefront customer
+session. Its `/api/management/...` BFF routes validate input, enforce
+exact-origin protection for mutations, refresh tokens server-side, and return
+`private, no-store` responses. Django remains authoritative for all permissions,
+order transitions, refund resolution, shipment rules, moderation transitions,
+and reply uniqueness.
 
 ## Authentication and account
 
