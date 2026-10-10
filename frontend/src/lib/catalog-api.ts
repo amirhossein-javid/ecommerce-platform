@@ -1,6 +1,10 @@
 import "server-only";
 
 import type { CatalogQuery } from "@/lib/catalog-query";
+import {
+  isProductRatingAggregate,
+  type ProductRatingAggregate,
+} from "@/lib/product-rating";
 
 const CATEGORIES_PATH = "/api/v1/categories/";
 const PRODUCTS_PATH = "/api/v1/products/";
@@ -26,7 +30,7 @@ export type ProductImage = {
   position: number;
 };
 
-export type ProductListItem = {
+export type ProductListItem = ProductRatingAggregate & {
   id: number;
   name: string;
   slug: string;
@@ -36,7 +40,10 @@ export type ProductListItem = {
   primary_image: ProductImage | null;
 };
 
-export type ProductDetail = Omit<ProductListItem, "primary_image"> & {
+export type ProductDetail = Omit<
+  ProductListItem,
+  "primary_image" | "average_rating" | "review_count"
+> & {
   description: string;
   images: ProductImage[];
 };
@@ -110,7 +117,10 @@ function isProductImage(value: unknown): value is ProductImage {
 
 function hasProductSummaryFields(
   value: unknown,
-): value is Omit<ProductListItem, "primary_image"> {
+): value is Omit<
+  ProductListItem,
+  "primary_image" | "average_rating" | "review_count"
+> {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -136,7 +146,8 @@ function isProductListItem(value: unknown): value is ProductListItem {
   const product = value as ProductListItem;
 
   return (
-    product.primary_image === null || isProductImage(product.primary_image)
+    (product.primary_image === null || isProductImage(product.primary_image)) &&
+    isProductRatingAggregate(product)
   );
 }
 
@@ -298,18 +309,10 @@ export async function getProducts(query: CatalogQuery): Promise<ProductPage> {
   let response: Response;
 
   try {
-    response = await fetch(
-      url,
-      query.search || query.category
-        ? {
-            headers: { Accept: "application/json" },
-            cache: "no-store",
-          }
-        : {
-            headers: { Accept: "application/json" },
-            next: { revalidate: CATALOG_REVALIDATE_SECONDS },
-          },
-    );
+    response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
   } catch {
     throw new CatalogApiError();
   }

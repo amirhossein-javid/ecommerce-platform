@@ -32,6 +32,8 @@ aggregates, official store replies, authenticated submission, moderation-status
 display, and deletion. Authorized operators can moderate reviews and manage one
 official reply per review through Django Admin or the focused Next.js panel at
 `/management/reviews`.
+Storefront product cards display the current approved-review average and count,
+or the explicit Persian unrated state when no approved reviews exist.
 Its thin same-origin BFF stores JWTs and the guest-cart token in
 HttpOnly cookies, enforces origin checks on mutations, serializes refresh-token
 rotation, and keeps personalized responses private/no-store. Detailed endpoint

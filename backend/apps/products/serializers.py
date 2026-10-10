@@ -48,6 +48,13 @@ class ProductListSerializer(serializers.ModelSerializer):
     category = CategorySummarySerializer(read_only=True)
     in_stock = serializers.SerializerMethodField()
     primary_image = serializers.SerializerMethodField()
+    average_rating = serializers.DecimalField(
+        max_digits=2,
+        decimal_places=1,
+        allow_null=True,
+        read_only=True,
+    )
+    review_count = serializers.IntegerField(min_value=0, read_only=True)
 
     class Meta:
         model = Product
@@ -59,6 +66,8 @@ class ProductListSerializer(serializers.ModelSerializer):
             "price",
             "in_stock",
             "primary_image",
+            "average_rating",
+            "review_count",
         )
         read_only_fields = fields
 

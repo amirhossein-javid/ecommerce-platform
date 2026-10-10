@@ -87,6 +87,16 @@ class ProductListView(ListAPIView):
                 status=Product.Status.ACTIVE,
                 category__is_active=True,
             )
+            .annotate(
+                average_rating=Avg(
+                    "reviews__rating",
+                    filter=Q(reviews__status=ProductReview.Status.APPROVED),
+                ),
+                review_count=Count(
+                    "reviews",
+                    filter=Q(reviews__status=ProductReview.Status.APPROVED),
+                ),
+            )
             .select_related("category")
             .prefetch_related(
                 Prefetch(
