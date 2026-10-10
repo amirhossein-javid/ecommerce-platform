@@ -6,22 +6,13 @@ import { Container } from "@/components/container";
 import { PaymentPanel } from "@/components/payment-panel";
 import { getCustomerSession } from "@/lib/auth-session";
 import { CheckoutApiError, getCustomerOrder } from "@/lib/checkout-api";
-import { parseOrderId, type OrderStatus } from "@/lib/checkout-contract";
+import { parseOrderId } from "@/lib/checkout-contract";
 import { formatToman } from "@/lib/format-price";
+import { ORDER_STATUS_LABELS } from "@/lib/order-policy";
 
 export const metadata: Metadata = {
   title: "نتیجهٔ ثبت سفارش | فروشگاه",
   description: "مشاهدهٔ نتیجه و وضعیت واقعی سفارش",
-};
-
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING_PAYMENT: "در انتظار پرداخت",
-  PAID: "پرداخت‌شده",
-  PROCESSING: "در حال پردازش",
-  SHIPPED: "ارسال‌شده",
-  DELIVERED: "تحویل‌شده",
-  CANCELLED: "لغوشده",
-  EXPIRED: "منقضی‌شده",
 };
 
 type OrderResultPageProps = {
@@ -60,7 +51,7 @@ export default async function OrderResultPage({ params }: OrderResultPageProps) 
           <p className="mt-5 text-sm font-bold text-primary">سفارش با موفقیت ثبت شد</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground sm:text-4xl">سفارش شمارهٔ <bdi>{order.id.toLocaleString("fa-IR")}</bdi></h1>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span className="rounded-lg bg-primary-soft px-3 py-2 text-sm font-bold text-primary">وضعیت واقعی: {STATUS_LABELS[order.status]}</span>
+            <span className="rounded-lg bg-primary-soft px-3 py-2 text-sm font-bold text-primary">وضعیت واقعی: {ORDER_STATUS_LABELS[order.status]}</span>
             {order.status === "PENDING_PAYMENT" ? <span className="text-sm font-semibold text-muted-foreground">پرداخت هنوز انجام نشده است.</span> : null}
           </div>
         </header>
@@ -103,6 +94,7 @@ export default async function OrderResultPage({ params }: OrderResultPageProps) 
               orderId={order.id}
               initialOrderStatus={order.status}
             />
+            <Link href={`/account/orders/${order.id}`} className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-primary/30 px-5 text-sm font-bold text-primary hover:bg-primary-soft/50">مشاهده در سفارش‌های من</Link>
             <Link href="/products" className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-primary/25 px-5 text-sm font-bold text-primary hover:bg-primary-soft/45">بازگشت به محصولات</Link>
           </aside>
         </div>

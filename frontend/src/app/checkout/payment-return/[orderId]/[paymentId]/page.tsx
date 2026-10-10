@@ -62,7 +62,7 @@ export default async function PaymentReturnPage({
             دوباره بررسی کنید.
           </p>
           <Link
-            href={`/checkout/orders/${orderId}`}
+            href={`/account/orders/${orderId}`}
             className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary-hover"
           >
             مشاهدهٔ وضعیت سفارش

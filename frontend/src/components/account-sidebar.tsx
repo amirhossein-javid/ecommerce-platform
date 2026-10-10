@@ -4,11 +4,12 @@ import type { CustomerProfile } from "@/lib/auth-contract";
 
 type AccountSidebarProps = {
   customer: CustomerProfile;
-  active: "profile" | "addresses";
+  active: "profile" | "addresses" | "orders";
 };
 
 const items = [
   { key: "profile", href: "/account", label: "اطلاعات حساب" },
+  { key: "orders", href: "/account/orders", label: "سفارش‌های من" },
   { key: "addresses", href: "/account/addresses", label: "آدرس‌های من" },
 ] as const;
 
@@ -49,7 +50,7 @@ export function AccountSidebar({ customer, active }: AccountSidebarProps) {
                       current ? "bg-primary-soft" : "bg-surface/70"
                     }`}
                   >
-                    {item.key === "profile" ? "●" : "⌖"}
+                    {item.key === "profile" ? "●" : item.key === "orders" ? "□" : "⌖"}
                   </span>
                   {item.label}
                 </Link>

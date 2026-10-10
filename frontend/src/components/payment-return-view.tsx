@@ -10,21 +10,12 @@ import {
   isPaymentAttempt,
   type PaymentStatus,
 } from "@/lib/payment-contract";
+import { ORDER_STATUS_LABELS } from "@/lib/order-policy";
 
 type PaymentReturnViewProps = {
   callbackData: CallbackData | null;
   orderId: number;
   paymentId: number;
-};
-
-const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING_PAYMENT: "در انتظار پرداخت",
-  PAID: "پرداخت‌شده",
-  PROCESSING: "در حال پردازش",
-  SHIPPED: "ارسال‌شده",
-  DELIVERED: "تحویل‌شده",
-  CANCELLED: "لغوشده",
-  EXPIRED: "منقضی‌شده",
 };
 
 export function PaymentReturnView({ callbackData, orderId, paymentId }: PaymentReturnViewProps) {
@@ -96,7 +87,7 @@ export function PaymentReturnView({ callbackData, orderId, paymentId }: PaymentR
       <p className="mt-3 leading-8 text-muted-foreground">{pending ? "اطلاعات بازگشت برای تأیید به Django ارسال شده است." : success ? "وضعیت پرداخت و سفارش هر دو توسط فروشگاه تأیید شده‌اند." : lateSuccess ? "سفارش منقضی یا لغو شده باقی می‌ماند؛ وضعیت سفارش را برای ادامه بررسی کنید." : "وضعیت نمایش‌داده‌شده از پاسخ authoritative فروشگاه دریافت شده است."}</p>
       {error ? <p role="alert" className="mt-5 rounded-lg bg-destructive-soft px-4 py-3 text-sm font-semibold leading-7 text-destructive">{error}</p> : null}
       {orderStatus ? <p className="mt-4 text-sm font-bold text-primary">وضعیت سفارش: {ORDER_STATUS_LABELS[orderStatus]}</p> : null}
-      <Link href={`/checkout/orders/${orderId}`} className="mt-7 inline-flex min-h-12 items-center justify-center rounded-lg bg-primary px-6 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover">مشاهدهٔ وضعیت سفارش</Link>
+      <Link href={`/account/orders/${orderId}`} className="mt-7 inline-flex min-h-12 items-center justify-center rounded-lg bg-primary px-6 text-sm font-extrabold text-primary-foreground hover:bg-primary-hover">مشاهدهٔ جزئیات سفارش</Link>
     </section>
   );
 }
