@@ -34,6 +34,11 @@ operations dashboard at `/dashboard` for backend-derived order metrics, order
 fulfillment, review moderation, and one official reply per review. Order and
 review permissions stay independent, and the legacy `/management/reviews` URL
 redirects to `/dashboard/reviews`.
+
+Django Admin remains the separate technical/operator back office at `/admin/`.
+It uses a dependency-free Persian RTL Naghsh-e Jahan theme built on Django's
+native templates and CSS variables; existing model permissions, validation,
+read-only protections, and domain-backed actions remain authoritative.
 Storefront product cards display the current approved-review average and count,
 or the explicit Persian unrated state when no approved reviews exist.
 Its thin same-origin BFF stores JWTs and the guest-cart token in

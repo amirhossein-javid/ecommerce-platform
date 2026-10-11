@@ -1,0 +1,19 @@
+{% extends "admin/index.html" %}
+
+{% block content_title %}
+  <section class="admin-welcome" aria-labelledby="admin-welcome-title">
+    <p>نقش‌جهان · پنل داخلی</p>
+    <h1 id="admin-welcome-title">مرکز مدیریت فروشگاه</h1>
+    <span>مدیریت امن کاتالوگ، کاربران، سفارش‌ها و پرداخت‌ها با همان مجوزها و گردش‌کارهای معتبر سامانه.</span>
+  </section>
+{% endblock %}
+
+{% block content %}
+  <div class="admin-section-heading">
+    <div>
+      <h2>بخش‌های مدیریتی</h2>
+      <p>فقط بخش‌هایی نمایش داده می‌شوند که حساب شما مجوز مشاهدهٔ آن‌ها را دارد.</p>
+    </div>
+  </div>
+  {{ block.super }}
+{% endblock %}

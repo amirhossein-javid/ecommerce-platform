@@ -1,0 +1,17 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'naghsh_admin/css/admin.css' %}">
+{% endblock %}
+
+{% block branding %}
+  <a class="naghsh-brand" href="{% url 'admin:index' %}" aria-label="صفحه اصلی مدیریت نقش‌جهان">
+    <span class="naghsh-brand__mark" aria-hidden="true">ن</span>
+    <span>
+      <strong>نقش‌جهان</strong>
+      <small>مدیریت فروشگاه</small>
+    </span>
+  </a>
+{% endblock %}
