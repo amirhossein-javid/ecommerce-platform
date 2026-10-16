@@ -1,0 +1,14 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls naghsh_admin %}
+
+{% block title %}{% admin_model_name opts plural=True as model_name %}{{ model_name }} | {{ site_title }}{% endblock %}
+
+{% block content_title %}{% admin_model_name opts plural=True as model_name %}<h1>{{ model_name }}</h1>{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; {% admin_app_label opts as app_name %}<a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ app_name }}</a>
+  &rsaquo; {% admin_model_name opts plural=True %}
+</div>
+{% endblock %}

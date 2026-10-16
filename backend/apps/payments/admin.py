@@ -9,16 +9,16 @@ from .models import BaleWebhookUpdate, PaymentAttempt
 
 
 class PaymentOperationalStateFilter(admin.SimpleListFilter):
-    title = "operational state"
+    title = "وضعیت عملیاتی"
     parameter_name = "payment_state"
 
     def lookups(self, request, model_admin):
         return (
-            ("failed_pending", "Failed while order pending"),
-            ("payment_elapsed", "Pending; payment window elapsed"),
-            ("payment_inventory", "Pending; invalid payment inventory"),
-            ("refund_required", "Successful; refund required"),
-            ("inconsistent", "Inconsistent with order"),
+            ("failed_pending", "ناموفق در زمان انتظار سفارش"),
+            ("payment_elapsed", "در انتظار؛ مهلت پرداخت پایان یافته"),
+            ("payment_inventory", "در انتظار؛ موجودی پرداخت نامعتبر"),
+            ("refund_required", "موفق؛ نیازمند بازپرداخت"),
+            ("inconsistent", "ناسازگار با سفارش"),
         )
 
     def queryset(self, request, queryset):
@@ -71,15 +71,15 @@ class PaymentOperationalStateFilter(admin.SimpleListFilter):
 
 
 class BaleWebhookOperationalStateFilter(admin.SimpleListFilter):
-    title = "operational state"
+    title = "وضعیت عملیاتی"
     parameter_name = "webhook_state"
 
     def lookups(self, request, model_admin):
         return (
-            ("recoverable", "Locally recoverable"),
-            ("rejected", "Rejected"),
-            ("processing", "Currently processing"),
-            ("invalid_processing", "Processing without claim timestamp"),
+            ("recoverable", "قابل بازیابی محلی"),
+            ("rejected", "ردشده"),
+            ("processing", "در حال پردازش"),
+            ("invalid_processing", "در حال پردازش بدون زمان دریافت"),
         )
 
     def queryset(self, request, queryset):
@@ -190,15 +190,15 @@ class PaymentAttemptAdmin(ReadOnlyPaymentAdmin):
             )
         )
 
-    @admin.display(description="Customer", ordering="order__customer__user__email")
+    @admin.display(description="مشتری", ordering="order__customer__user__email")
     def customer_email(self, obj):
         return obj.order.customer.user.email
 
-    @admin.display(description="Order status", ordering="order__status")
+    @admin.display(description="وضعیت سفارش", ordering="order__status")
     def order_status(self, obj):
         return obj.order.status
 
-    @admin.display(description="Operational state")
+    @admin.display(description="وضعیت عملیاتی")
     def operational_state(self, obj):
         if (
             (
@@ -220,29 +220,29 @@ class PaymentAttemptAdmin(ReadOnlyPaymentAdmin):
                 and obj.order.refund_status == Order.RefundStatus.NOT_REQUIRED
             )
         ):
-            return "Needs review: inconsistent with order"
+            return "نیازمند بررسی؛ ناسازگار با سفارش"
         if (
             obj.status == PaymentAttempt.Status.SUCCESS
             and obj.order.refund_status == Order.RefundStatus.REQUIRED
         ):
-            return "Refund required"
+            return "نیازمند بازپرداخت"
         if obj.status == PaymentAttempt.Status.FAILED:
             if obj.order.status == Order.Status.PENDING_PAYMENT:
-                return "Failed while order pending"
-            return "Failed; historical"
+                return "ناموفق در زمان انتظار سفارش"
+            return "ناموفق؛ سابقه تاریخی"
         if obj.status == PaymentAttempt.Status.PENDING:
             if (
                 obj.admin_reservation_count == 0
                 or obj.admin_active_reservation_count != obj.admin_reservation_count
             ):
-                return "Payment inventory invalid"
+                return "موجودی پرداخت نامعتبر است"
             if (
                 obj.admin_payment_expires_at is not None
                 and obj.admin_payment_expires_at <= timezone.now()
             ):
-                return "Payment window elapsed"
-            return "Awaiting payment"
-        return "Completed"
+                return "مهلت پرداخت پایان یافته"
+            return "در انتظار پرداخت"
+        return "تکمیل‌شده"
 
 
 @admin.register(BaleWebhookUpdate)
@@ -287,16 +287,16 @@ class BaleWebhookUpdateAdmin(ReadOnlyPaymentAdmin):
     date_hierarchy = "received_at"
     list_per_page = 50
 
-    @admin.display(description="Operational state")
+    @admin.display(description="وضعیت عملیاتی")
     def operational_state(self, obj):
         if obj.status == BaleWebhookUpdate.Status.PENDING:
-            return "Locally recoverable"
+            return "قابل بازیابی محلی"
         if obj.status == BaleWebhookUpdate.Status.PROCESSING:
             if obj.processing_started_at is None:
-                return "Needs review: missing processing timestamp"
+                return "نیازمند بررسی؛ زمان شروع پردازش ثبت نشده"
             if obj.processing_started_at <= timezone.now() - PROCESSING_LEASE:
-                return "Stale; locally recoverable"
-            return "Processing"
+                return "متوقف‌شده؛ قابل بازیابی محلی"
+            return "در حال پردازش"
         if obj.status == BaleWebhookUpdate.Status.REJECTED:
-            return "Rejected"
-        return "Processed"
+            return "ردشده"
+        return "پردازش‌شده"

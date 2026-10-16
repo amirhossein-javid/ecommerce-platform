@@ -64,19 +64,19 @@ class OrderStatusHistoryInline(ReadOnlyOrderInline):
 
 
 class OrderOperationalStateFilter(admin.SimpleListFilter):
-    title = "operator attention"
+    title = "نیاز به رسیدگی اپراتور"
     parameter_name = "operational_state"
 
     def lookups(self, request, model_admin):
         return (
-            ("attention", "Any attention required"),
-            ("refund", "Refund required"),
-            ("payment_elapsed", "Payment window elapsed"),
-            ("payment_inventory", "Invalid payment inventory"),
-            ("start_processing", "Ready to process"),
-            ("shipment_details", "Shipment details required"),
-            ("ready_to_ship", "Ready to ship"),
-            ("awaiting_delivery", "Awaiting delivery confirmation"),
+            ("attention", "همه موارد نیازمند رسیدگی"),
+            ("refund", "نیازمند بازپرداخت"),
+            ("payment_elapsed", "مهلت پرداخت پایان یافته"),
+            ("payment_inventory", "موجودی نامعتبر پرداخت"),
+            ("start_processing", "آماده پردازش"),
+            ("shipment_details", "نیازمند اطلاعات مرسوله"),
+            ("ready_to_ship", "آماده ارسال"),
+            ("awaiting_delivery", "در انتظار تأیید تحویل"),
         )
 
     def queryset(self, request, queryset):
@@ -133,15 +133,15 @@ class OrderOperationalStateFilter(admin.SimpleListFilter):
 
 
 class ShipmentOperationalStateFilter(admin.SimpleListFilter):
-    title = "fulfillment state"
+    title = "وضعیت تکمیل سفارش"
     parameter_name = "shipment_state"
 
     def lookups(self, request, model_admin):
         return (
-            ("needs_details", "Needs shipment details"),
-            ("ready_to_ship", "Ready to ship"),
-            ("shipped", "In transit"),
-            ("delivered", "Delivered"),
+            ("needs_details", "نیازمند اطلاعات مرسوله"),
+            ("ready_to_ship", "آماده ارسال"),
+            ("shipped", "در مسیر ارسال"),
+            ("delivered", "تحویل‌شده"),
         )
 
     def queryset(self, request, queryset):
@@ -173,9 +173,7 @@ class ShipmentAdminForm(forms.ModelForm):
         carrier = cleaned_data.get("carrier", "").strip()
         tracking_number = cleaned_data.get("tracking_number", "").strip()
         if not carrier or not tracking_number:
-            raise forms.ValidationError(
-                "Carrier and tracking number are required for shipment."
-            )
+            raise forms.ValidationError("حامل و کد رهگیری مرسوله الزامی هستند.")
         cleaned_data["carrier"] = carrier
         cleaned_data["tracking_number"] = tracking_number
         return cleaned_data
@@ -272,34 +270,34 @@ class OrderAdmin(admin.ModelAdmin):
             )
         )
 
-    @admin.display(description="Operator state")
+    @admin.display(description="وضعیت عملیاتی")
     def operator_state(self, obj):
         if obj.refund_status == Order.RefundStatus.REQUIRED:
-            return "Refund required"
+            return "نیازمند بازپرداخت"
         if obj.status == Order.Status.PENDING_PAYMENT:
             if (
                 obj.admin_reservation_count == 0
                 or obj.admin_active_reservation_count != obj.admin_reservation_count
             ):
-                return "Payment inventory invalid"
+                return "موجودی پرداخت نامعتبر است"
             if (
                 obj.admin_payment_expires_at is not None
                 and obj.admin_payment_expires_at <= timezone.now()
             ):
-                return "Payment window elapsed"
+                return "مهلت پرداخت پایان یافته"
         if obj.status == Order.Status.PAID:
-            return "Ready to process"
+            return "آماده پردازش"
         if obj.status == Order.Status.PROCESSING:
             shipment = getattr(obj, "shipment", None)
             if shipment is None or not shipment.carrier or not shipment.tracking_number:
-                return "Shipment details required"
-            return "Ready to ship"
+                return "نیازمند اطلاعات مرسوله"
+            return "آماده ارسال"
         if obj.status == Order.Status.SHIPPED:
-            return "Awaiting delivery confirmation"
+            return "در انتظار تأیید تحویل"
         return "—"
 
     @admin.action(
-        description="Mark selected orders as processing",
+        description="انتقال سفارش‌های انتخاب‌شده به «در حال پردازش»",
         permissions=("change",),
     )
     def mark_processing(self, request, queryset):
@@ -311,7 +309,7 @@ class OrderAdmin(admin.ModelAdmin):
         )
 
     @admin.action(
-        description="Mark selected orders as shipped",
+        description="ثبت ارسال سفارش‌های انتخاب‌شده",
         permissions=("change",),
     )
     def mark_shipped(self, request, queryset):
@@ -323,7 +321,7 @@ class OrderAdmin(admin.ModelAdmin):
         )
 
     @admin.action(
-        description="Mark selected orders as delivered",
+        description="ثبت تحویل سفارش‌های انتخاب‌شده",
         permissions=("change",),
     )
     def mark_delivered(self, request, queryset):
@@ -335,7 +333,7 @@ class OrderAdmin(admin.ModelAdmin):
         )
 
     @admin.action(
-        description="Cancel selected eligible orders",
+        description="لغو سفارش‌های مجاز انتخاب‌شده",
         permissions=("change",),
     )
     def cancel_orders(self, request, queryset):
@@ -347,11 +345,11 @@ class OrderAdmin(admin.ModelAdmin):
                 actor_type=OrderStatusHistory.ActorType.OPERATOR,
                 actor_user=request.user,
             ),
-            success_message="cancelled",
+            success_message="لغو شد",
         )
 
     @admin.action(
-        description="Mark selected required refunds as resolved",
+        description="ثبت انجام بازپرداخت سفارش‌های انتخاب‌شده",
         permissions=("change",),
     )
     def resolve_refunds(self, request, queryset):
@@ -362,7 +360,7 @@ class OrderAdmin(admin.ModelAdmin):
                 order=order,
                 operator=request.user,
             ),
-            success_message="refund(s) resolved for",
+            success_message="با بازپرداخت انجام‌شده ثبت شد",
         )
 
     def _transition_selected_orders(
@@ -383,7 +381,7 @@ class OrderAdmin(admin.ModelAdmin):
                 actor_type=OrderStatusHistory.ActorType.OPERATOR,
                 actor_user=request.user,
             ),
-            success_message=f"marked as {to_status}",
+            success_message="به وضعیت جدید منتقل شد",
         )
 
     def _run_order_command(self, *, request, queryset, command, success_message):
@@ -400,7 +398,7 @@ class OrderAdmin(admin.ModelAdmin):
                 failed += 1
                 self.message_user(
                     request,
-                    f"Order {order.pk}: {exc}",
+                    f"سفارش {order.pk}: {exc}",
                     level=messages.ERROR,
                 )
             else:
@@ -412,28 +410,27 @@ class OrderAdmin(admin.ModelAdmin):
         if changed:
             self.message_user(
                 request,
-                f"{changed} order(s) {success_message}.",
+                f"عملیات روی {changed} سفارش انجام شد: {success_message}.",
                 level=messages.SUCCESS,
             )
         if unchanged:
             self.message_user(
                 request,
-                f"{unchanged} order command(s) were already completed by this "
-                "operator.",
+                f"عملیات {unchanged} سفارش قبلاً توسط همین اپراتور انجام شده بود.",
                 level=messages.INFO,
             )
         if failed:
             self.message_user(
                 request,
-                f"{failed} order command(s) could not be completed.",
+                f"عملیات {failed} سفارش قابل انجام نبود.",
                 level=messages.WARNING,
             )
 
-    @admin.display(description="Payments")
+    @admin.display(description="پرداخت‌ها")
     def payment_attempts_link(self, obj):
         url = reverse("admin:payments_paymentattempt_changelist")
         return format_html(
-            '<a href="{}?order__id__exact={}">{} attempt(s)</a>',
+            '<a href="{}?order__id__exact={}">{} تلاش پرداخت</a>',
             url,
             obj.pk,
             obj.admin_payment_attempt_count,
@@ -488,20 +485,20 @@ class ShipmentAdmin(admin.ModelAdmin):
             return readonly + ("carrier", "tracking_number")
         return readonly
 
-    @admin.display(description="Order status", ordering="order__status")
+    @admin.display(description="وضعیت سفارش", ordering="order__status")
     def order_status(self, obj):
         return obj.order.status
 
-    @admin.display(description="Fulfillment state")
+    @admin.display(description="وضعیت تکمیل سفارش")
     def fulfillment_state(self, obj):
         if obj.order.status == Order.Status.PROCESSING:
             if not obj.carrier or not obj.tracking_number:
-                return "Shipment details required"
-            return "Ready to ship"
+                return "نیازمند اطلاعات مرسوله"
+            return "آماده ارسال"
         if obj.order.status == Order.Status.SHIPPED:
-            return "In transit"
+            return "در مسیر ارسال"
         if obj.order.status == Order.Status.DELIVERED:
-            return "Delivered"
+            return "تحویل‌شده"
         if obj.order.status == Order.Status.CANCELLED:
-            return "Cancelled"
+            return "لغوشده"
         return "—"

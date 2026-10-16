@@ -240,7 +240,7 @@ def test_payment_operational_columns_do_not_add_per_row_queries(
     with django_assert_num_queries(1):
         rows = list(queryset)
         assert [payment_admin.operational_state(row) for row in rows] == [
-            "Failed while order pending"
+            "ناموفق در زمان انتظار سفارش"
         ] * 4
         for row in rows:
             payment_admin.customer_email(row)

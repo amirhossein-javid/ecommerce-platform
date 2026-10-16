@@ -1,0 +1,21 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls naghsh_admin %}
+
+{% block title %}
+  {% admin_model_name opts as model_name %}
+  {% if errors %}خطا: {% endif %}{% if add %}افزودن {{ model_name }}{% else %}{{ original|truncatewords:"18" }} | {{ model_name }}{% endif %} | {{ site_title }}
+{% endblock %}
+
+{% block content_title %}
+  {% admin_model_name opts as model_name %}
+  <h1>{% if add %}افزودن {{ model_name }}{% elif change %}مشاهده و ویرایش {{ model_name }}{% else %}مشاهده {{ model_name }}{% endif %}</h1>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; {% admin_app_label opts as app_name %}<a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ app_name }}</a>
+  &rsaquo; {% admin_model_name opts plural=True as models_name %}{% if has_view_permission %}<a href="{% url opts|admin_urlname:'changelist' %}">{{ models_name }}</a>{% else %}{{ models_name }}{% endif %}
+  &rsaquo; {% if add %}{% admin_model_name opts %}{% else %}{{ original|truncatewords:"18" }}{% endif %}
+</div>
+{% endblock %}

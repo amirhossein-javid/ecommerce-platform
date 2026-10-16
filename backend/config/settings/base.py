@@ -21,7 +21,7 @@ DEBUG = env.bool("DJANGO_DEBUG")
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "apps.common.admin_config.NaghshAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",

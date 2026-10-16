@@ -38,7 +38,11 @@ redirects to `/dashboard/reviews`.
 Django Admin remains the separate technical/operator back office at `/admin/`.
 It uses a dependency-free Persian RTL Naghsh-e Jahan theme built on Django's
 native templates and CSS variables; existing model permissions, validation,
-read-only protections, and domain-backed actions remain authoritative.
+read-only protections, and domain-backed actions remain authoritative. Read-only
+dates and list columns are presented in the Solar Hijri calendar with Persian
+digits after conversion to Asia/Tehran. Editable date/time controls and native
+date filters intentionally remain Gregorian so Django's parsing, validation,
+ordering, and query behavior are unchanged.
 Storefront product cards display the current approved-review average and count,
 or the explicit Persian unrated state when no approved reviews exist.
 Its thin same-origin BFF stores JWTs and the guest-cart token in
