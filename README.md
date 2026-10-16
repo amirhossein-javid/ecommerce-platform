@@ -216,6 +216,40 @@ network-level denial-of-service protection.
 
 ## Production image and deployment lifecycle
 
+The frontend Dockerfile defaults to a minimal Next.js standalone production
+runtime. It installs the existing lockfile with `npm ci`, builds in an isolated
+stage, copies only the standalone server plus public/static assets, and runs as
+the non-root `node` user:
+
+```bash
+docker build --target production -t ecommerce-frontend ./frontend
+docker run --rm -p 3000:3000 \
+  -e DJANGO_API_URL=http://django.internal:8000 \
+  -e DJANGO_PUBLIC_MEDIA_URL=https://media.example.com/ \
+  ecommerce-frontend
+```
+
+`DJANGO_API_URL` is the required server-only Django origin. Do not expose it
+through a `NEXT_PUBLIC_` variable. `DJANGO_PUBLIC_MEDIA_URL` is optional when
+internal Django media URLs need a browser-visible origin, and
+`PAYMENT_REDIRECT_ALLOWED_ORIGINS` is the optional comma-separated allowlist for
+generic HTTPS payment handoff URLs. Bale invoice identifiers do not use that
+allowlist. `PORT` defaults to `3000`; the image fixes `NODE_ENV=production` so
+the existing BFF cookies are `Secure`, and listens on `0.0.0.0`.
+
+The frontend image healthcheck calls `GET /api/health` on its own loopback
+listener. That fixed, no-store liveness response does not contact Django,
+PostgreSQL, or the user session. Deployment-level readiness must separately
+exercise frontend-to-Django connectivity and Django's database readiness.
+
+TLS termination, accepted public hosts, and forwarding-header sanitization
+remain ingress responsibilities. Preserve the documented same-origin browser
+topology. The repository does not add a provider-neutral production Compose
+file because database, ingress, media, secrets, and backup topology are
+deployment decisions. The root `compose.yaml` explicitly builds the Dockerfile
+`development` target and retains the existing bind mounts and development
+command.
+
 The default backend Docker build installs production requirements, collects immutable
 static assets, and creates a non-root image. It does not contact PostgreSQL or
 embed deployment credentials while building:
