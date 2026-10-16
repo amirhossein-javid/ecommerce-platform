@@ -13,6 +13,11 @@ remain at the root.
 The executable Next.js integration boundary is documented in
 [`FRONTEND_HANDOFF.md`](FRONTEND_HANDOFF.md).
 
+The provider-neutral single Ubuntu VPS production stack and operational
+runbook are documented in [`DEPLOYMENT_VPS.md`](DEPLOYMENT_VPS.md). It uses the
+separate `compose.production.yaml`; the root `compose.yaml` remains exclusively
+for local development.
+
 ## Current scope
 
 The Django API implements email-based customer authentication, profiles and
@@ -244,8 +249,9 @@ exercise frontend-to-Django connectivity and Django's database readiness.
 
 TLS termination, accepted public hosts, and forwarding-header sanitization
 remain ingress responsibilities. Preserve the documented same-origin browser
-topology. The repository does not add a provider-neutral production Compose
-file because database, ingress, media, secrets, and backup topology are
+topology. For the supported single-VPS topology, `compose.production.yaml` and
+`deploy/Caddyfile` provide the production boundary described in
+`DEPLOYMENT_VPS.md`; provider-specific off-server backup and monitoring remain
 deployment decisions. The root `compose.yaml` explicitly builds the Dockerfile
 `development` target and retains the existing bind mounts and development
 command.
