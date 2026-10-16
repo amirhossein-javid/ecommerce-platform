@@ -5,6 +5,7 @@ import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./auth-security.ts";
 import {
   getManagementCookieOptions,
   MANAGEMENT_ACCESS_COOKIE_NAME,
+  MANAGEMENT_COOKIE_PATH,
   MANAGEMENT_REFRESH_COOKIE_NAME,
 } from "./management-auth-security.ts";
 
@@ -15,9 +16,10 @@ test("management sessions use separate secure HttpOnly cookies", () => {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
-    path: "/",
+    path: MANAGEMENT_COOKIE_PATH,
     maxAge: 60 * 5,
   });
+  assert.equal(MANAGEMENT_COOKIE_PATH, "/api/management/");
   assert.equal(
     getManagementCookieOptions("refresh", false).maxAge,
     60 * 60 * 24 * 7,

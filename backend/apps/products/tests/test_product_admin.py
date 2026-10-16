@@ -243,7 +243,7 @@ def test_admin_inline_rejects_multiple_new_primary_selections(
     )
 
     assert response.status_code == 200
-    assert b"Select only one new primary image." in response.content
+    assert "فقط یک تصویر اصلی جدید انتخاب کنید." in response.content.decode()
     first.refresh_from_db()
     second.refresh_from_db()
     third.refresh_from_db()
@@ -319,6 +319,8 @@ def test_admin_cannot_reduce_stock_below_active_reservations(
     )
 
     assert response.status_code == 200
-    assert b"Stock cannot be lower" in response.content
+    assert "موجودی نمی‌تواند از تعداد رزروشده فعال کمتر باشد" in (
+        response.content.decode()
+    )
     product.refresh_from_db()
     assert product.stock_quantity == 10

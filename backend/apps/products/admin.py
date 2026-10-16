@@ -33,7 +33,7 @@ class ProductAdminForm(forms.ModelForm):
         ).aggregate(total=Sum("quantity", default=0))["total"]
         if stock_quantity < reserved_quantity:
             raise ValidationError(
-                "Stock cannot be lower than the quantity in active reservations "
+                "موجودی نمی‌تواند از تعداد رزروشده فعال کمتر باشد "
                 f"({reserved_quantity})."
             )
         return stock_quantity
@@ -66,7 +66,7 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
             and not form.initial.get("is_primary", False)
         ]
         if len(newly_selected_primary_forms) > 1:
-            raise ValidationError("Select only one new primary image.")
+            raise ValidationError("فقط یک تصویر اصلی جدید انتخاب کنید.")
 
     def save(self, commit=True):
         if not commit or self.instance.pk is None:
@@ -97,7 +97,7 @@ class ProductImageInline(admin.TabularInline):
     readonly_fields = ("preview", "created_at")
     ordering = ("position", "pk")
 
-    @admin.display(description="Preview")
+    @admin.display(description="پیش‌نمایش")
     def preview(self, obj):
         if obj is None:
             return "—"
@@ -117,9 +117,9 @@ class CategoryAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
-        ("Category", {"fields": ("name", "slug", "parent", "is_active")}),
+        ("دسته‌بندی", {"fields": ("name", "slug", "parent", "is_active")}),
         (
-            "Metadata",
+            "اطلاعات سیستمی",
             {
                 "fields": ("created_at", "updated_at"),
                 "classes": ("collapse",),
@@ -176,13 +176,13 @@ class ProductAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
         (
-            "Product",
+            "محصول",
             {"fields": ("name", "slug", "sku", "category", "status")},
         ),
-        ("Catalog", {"fields": ("description", "price")}),
-        ("Inventory", {"fields": ("stock_quantity",)}),
+        ("کاتالوگ", {"fields": ("description", "price")}),
+        ("موجودی", {"fields": ("stock_quantity",)}),
         (
-            "Metadata",
+            "اطلاعات سیستمی",
             {
                 "fields": ("created_at", "updated_at"),
                 "classes": ("collapse",),
@@ -220,7 +220,7 @@ class ProductAdmin(admin.ModelAdmin):
             )
         )
 
-    @admin.display(description="Primary image")
+    @admin.display(description="تصویر اصلی")
     def primary_image_thumbnail(self, obj):
         images = getattr(obj, "admin_primary_images", ())
         if not images:
@@ -228,7 +228,7 @@ class ProductAdmin(admin.ModelAdmin):
         image = images[0]
         return image_thumbnail(image.image, alt_text=image.alt_text)
 
-    @admin.display(boolean=True, description="In stock")
+    @admin.display(boolean=True, description="دارای موجودی")
     def in_stock(self, obj):
         return obj.stock_quantity > 0
 
@@ -292,13 +292,13 @@ class ProductReviewAdmin(admin.ModelAdmin):
             obj,
         ) or super().has_change_permission(request, obj)
 
-    @admin.display(description="Customer")
+    @admin.display(description="مشتری")
     def customer_display_name(self, obj):
         display_name = f"{obj.customer.first_name} {obj.customer.last_name}".strip()
-        return display_name or f"Customer #{obj.customer_id}"
+        return display_name or f"مشتری شمارهٔ {obj.customer_id}"
 
     @admin.action(
-        description="Approve selected pending reviews",
+        description="تأیید دیدگاه‌های در انتظار انتخاب‌شده",
         permissions=("change",),
     )
     def approve_reviews(self, request, queryset):
@@ -309,7 +309,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
         )
 
     @admin.action(
-        description="Reject selected pending reviews",
+        description="رد دیدگاه‌های در انتظار انتخاب‌شده",
         permissions=("change",),
     )
     def reject_reviews(self, request, queryset):
@@ -332,13 +332,13 @@ class ProductReviewAdmin(admin.ModelAdmin):
         if changed:
             self.message_user(
                 request,
-                f"{changed} pending review(s) marked as {target_status}.",
+                f"وضعیت {changed} دیدگاه در انتظار تغییر کرد.",
                 level=messages.SUCCESS,
             )
         if skipped:
             self.message_user(
                 request,
-                f"{skipped} non-pending review(s) were left unchanged.",
+                f"{skipped} دیدگاه خارج از وضعیت انتظار بدون تغییر باقی ماند.",
                 level=messages.WARNING,
             )
 
@@ -351,7 +351,7 @@ class ProductReviewReplyAdminForm(forms.ModelForm):
     def clean_comment(self):
         comment = self.cleaned_data["comment"].strip()
         if not comment:
-            raise ValidationError("Reply text cannot be blank.")
+            raise ValidationError("متن پاسخ نمی‌تواند خالی باشد.")
         return comment
 
 

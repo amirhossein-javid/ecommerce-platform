@@ -151,6 +151,7 @@ def test_production_settings_apply_security_contract():
         "MIDDLEWARE": [
             "django.middleware.security.SecurityMiddleware",
             "whitenoise.middleware.WhiteNoiseMiddleware",
+            "apps.common.admin_locale.AdminPersianLocaleMiddleware",
             "django.contrib.sessions.middleware.SessionMiddleware",
             "corsheaders.middleware.CorsMiddleware",
             "django.middleware.common.CommonMiddleware",

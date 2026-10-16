@@ -371,8 +371,6 @@ def test_order_operational_columns_do_not_add_per_row_queries(
         rows = list(
             order_admin.get_queryset(request).filter(pk__in=[o.pk for o in orders])
         )
-        assert [order_admin.operator_state(row) for row in rows] == [
-            "Ready to process"
-        ] * 4
+        assert [order_admin.operator_state(row) for row in rows] == ["آماده پردازش"] * 4
         for row in rows:
             order_admin.payment_attempts_link(row)

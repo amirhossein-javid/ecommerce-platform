@@ -119,9 +119,9 @@ def test_authorized_operator_can_view_full_read_only_review_detail(client, revie
     assert "Sara Akbari" in response.content.decode()
     content = response.content.decode()
     assert review.comment in content
-    assert review.get_status_display() in content
-    assert "Created at" in content
-    assert "Updated at" in content
+    assert "در انتظار" in content
+    assert "زمان ایجاد" in content
+    assert "زمان به‌روزرسانی" in content
     for field_name in ("product", "customer", "rating", "comment", "status"):
         assert f'name="{field_name}"'.encode() not in response.content
     assert b'name="_save"' not in response.content

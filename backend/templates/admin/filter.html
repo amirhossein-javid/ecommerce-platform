@@ -1,0 +1,11 @@
+{% load i18n naghsh_admin %}
+<details data-filter-title="{{ title|admin_fa }}" open>
+  <summary>{% blocktranslate with filter_title=title|admin_fa %} By {{ filter_title }} {% endblocktranslate %}</summary>
+  <ul>
+  {% for choice in choices %}
+    <li{% if choice.selected %} class="selected"{% endif %}>
+      <a href="{{ choice.query_string|iriencode }}">{{ choice.display|admin_fa }}</a>
+    </li>
+  {% endfor %}
+  </ul>
+</details>

@@ -10,6 +10,7 @@ import {
   ManagementSessionError,
 } from "@/lib/management-authenticated-request";
 import { ManagementReviewApiError } from "@/lib/management-review-api";
+import { ManagementOrderApiError } from "@/lib/management-order-api";
 
 export function managementResultResponse<T>(result: {
   value: T;
@@ -36,13 +37,17 @@ export function managementRouteError(error: unknown) {
   }
 
   let response;
-  if (original instanceof ManagementReviewApiError && original.status === 403) {
+  const isManagementApiError =
+    original instanceof ManagementReviewApiError ||
+    original instanceof ManagementOrderApiError;
+
+  if (isManagementApiError && original.status === 403) {
     response = privateManagementJson(
       { error: "مجوز لازم برای این عملیات را ندارید." },
       403,
     );
   } else if (
-    original instanceof ManagementReviewApiError &&
+    isManagementApiError &&
     original.status === 400
   ) {
     response = privateManagementJson(
@@ -50,16 +55,16 @@ export function managementRouteError(error: unknown) {
       400,
     );
   } else if (
-    original instanceof ManagementReviewApiError &&
+    isManagementApiError &&
     original.status === 404
   ) {
-    response = privateManagementJson({ error: "نظر یا پاسخ پیدا نشد." }, 404);
+    response = privateManagementJson({ error: "رکورد درخواستی پیدا نشد." }, 404);
   } else if (
-    original instanceof ManagementReviewApiError &&
+    isManagementApiError &&
     original.status === 409
   ) {
     response = privateManagementJson(
-      { error: "وضعیت نظر یا پاسخ هم‌زمان تغییر کرده است؛ فهرست را تازه کنید." },
+      { error: "وضعیت داده هم‌زمان تغییر کرده یا عملیات مجاز نیست؛ اطلاعات را تازه کنید." },
       409,
     );
   } else {

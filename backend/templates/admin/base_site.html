@@ -1,0 +1,39 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'naghsh_admin/css/admin.css' %}?v=20261016-2">
+{% endblock %}
+
+{% block header %}
+  <header id="header" class="naghsh-header">
+    <div class="naghsh-header__inner">
+      <div id="branding">
+        <a class="naghsh-brand" href="{% url 'admin:index' %}" aria-label="صفحه اصلی مدیریت نقش‌جهان">
+          <span class="naghsh-brand__mark" aria-hidden="true">ن</span>
+          <span class="naghsh-brand__copy">
+            <strong>نقش‌جهان</strong>
+            <small>مرکز مدیریت فروشگاه</small>
+          </span>
+        </a>
+      </div>
+      {% if has_permission %}
+        <div id="user-tools" class="naghsh-header__account">
+          <div class="naghsh-header__identity">
+            <span>حساب مدیر</span>
+            <strong>{% firstof user.get_short_name user.get_username %}</strong>
+          </div>
+          <nav class="naghsh-header__actions" aria-label="پیوندهای حساب مدیریت">
+            {% if site_url %}<a href="{{ site_url }}">مشاهده فروشگاه</a>{% endif %}
+            {% if user.has_usable_password %}<a href="{% url 'admin:password_change' %}">تغییر گذرواژه</a>{% endif %}
+            <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
+              {% csrf_token %}
+              <button type="submit">خروج</button>
+            </form>
+          </nav>
+        </div>
+      {% endif %}
+    </div>
+  </header>
+{% endblock %}

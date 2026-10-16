@@ -1,0 +1,55 @@
+{% extends "admin/index.html" %}
+{% load i18n naghsh_admin %}
+
+{% block coltype %}colM naghsh-dashboard-shell{% endblock %}
+
+{% block content_title %}
+  <section class="admin-welcome" aria-labelledby="admin-welcome-title">
+    <p>نقش‌جهان · پنل داخلی</p>
+    <h1 id="admin-welcome-title">مرکز مدیریت فروشگاه</h1>
+    <span>مدیریت امن کاتالوگ، کاربران، سفارش‌ها و پرداخت‌ها با همان مجوزها و گردش‌کارهای معتبر سامانه.</span>
+  </section>
+{% endblock %}
+
+{% block content %}
+  <div class="naghsh-dashboard-layout">
+    <section class="naghsh-dashboard-apps" aria-labelledby="admin-sections-title">
+      <div class="admin-section-heading">
+        <div>
+          <h2 id="admin-sections-title">بخش‌های مدیریتی</h2>
+          <p>فقط بخش‌هایی نمایش داده می‌شوند که حساب شما مجوز مشاهدهٔ آن‌ها را دارد.</p>
+        </div>
+      </div>
+      <div class="naghsh-app-grid">
+        {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+      </div>
+    </section>
+    <aside class="naghsh-dashboard-recent" aria-labelledby="recent-actions-title">
+      <div class="module" id="recent-actions-module">
+        <div class="naghsh-recent-heading">
+          <h2 id="recent-actions-title">فعالیت‌های اخیر</h2>
+          <p>آخرین تغییرات ثبت‌شده با حساب شما</p>
+        </div>
+        {% load log %}
+        {% get_admin_log 10 as admin_log for_user user %}
+        {% if not admin_log %}
+          <p class="naghsh-empty-state">هنوز فعالیتی ثبت نشده است.</p>
+        {% else %}
+          <ul class="actionlist">
+          {% for entry in admin_log %}
+            <li class="{% if entry.is_addition %}addlink{% endif %}{% if entry.is_change %}changelink{% endif %}{% if entry.is_deletion %}deletelink{% endif %}">
+              <span class="visually-hidden">{% if entry.is_addition %}{% translate 'Added:' %}{% elif entry.is_change %}{% translate 'Changed:' %}{% elif entry.is_deletion %}{% translate 'Deleted:' %}{% endif %}</span>
+              {% if entry.is_deletion or not entry.get_admin_url %}{{ entry.object_repr }}{% else %}<a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>{% endif %}
+              <span class="mini quiet">{% if entry.content_type %}{{ entry.content_type.name|admin_fa }}{% else %}{% translate 'Unknown content' %}{% endif %}</span>
+            </li>
+          {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </aside>
+  </div>
+{% endblock %}
+
+{% block sidebar %}
+  {# Recent activity is part of the explicit responsive dashboard layout. #}
+{% endblock %}

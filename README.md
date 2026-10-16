@@ -29,9 +29,20 @@ carts, authentication, account/profile/address management, checkout, payment
 handoff and authoritative result handling, and paginated customer order
 history/detail. Product detail also includes approved customer reviews, rating
 aggregates, official store replies, authenticated submission, moderation-status
-display, and deletion. Authorized operators can moderate reviews and manage one
-official reply per review through Django Admin or the focused Next.js panel at
-`/management/reviews`.
+display, and deletion. Authorized operators can use the focused Next.js
+operations dashboard at `/dashboard` for backend-derived order metrics, order
+fulfillment, review moderation, and one official reply per review. Order and
+review permissions stay independent, and the legacy `/management/reviews` URL
+redirects to `/dashboard/reviews`.
+
+Django Admin remains the separate technical/operator back office at `/admin/`.
+It uses a dependency-free Persian RTL Naghsh-e Jahan theme built on Django's
+native templates and CSS variables; existing model permissions, validation,
+read-only protections, and domain-backed actions remain authoritative. Read-only
+dates and list columns are presented in the Solar Hijri calendar with Persian
+digits after conversion to Asia/Tehran. Editable date/time controls and native
+date filters intentionally remain Gregorian so Django's parsing, validation,
+ordering, and query behavior are unchanged.
 Storefront product cards display the current approved-review average and count,
 or the explicit Persian unrated state when no approved reviews exist.
 Its thin same-origin BFF stores JWTs and the guest-cart token in
