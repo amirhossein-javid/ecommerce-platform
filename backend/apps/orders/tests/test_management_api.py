@@ -24,7 +24,11 @@ def create_operator(*permissions):
     return operator
 
 
-def create_order(*, status_value=Order.Status.PAID):
+def create_order(
+    *,
+    status_value=Order.Status.PAID,
+    refund_status=Order.RefundStatus.NOT_REQUIRED,
+):
     user = User.objects.create_user(
         f"customer-{User.objects.count()}@example.com", "password"
     )
@@ -34,6 +38,7 @@ def create_order(*, status_value=Order.Status.PAID):
     order = Order.objects.create(
         customer=customer,
         status=status_value,
+        refund_status=refund_status,
         subtotal=Decimal("1000"),
         discount_total=Decimal("0"),
         shipping_total=Decimal("0"),
@@ -184,3 +189,113 @@ def test_shipment_permission_is_not_implied_by_order_change(api_client):
     )
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_refund_resolution_requires_authentication_and_change_order_permission(
+    api_client,
+):
+    order = create_order(
+        status_value=Order.Status.CANCELLED,
+        refund_status=Order.RefundStatus.REQUIRED,
+    )
+    url = reverse("orders:management-order-resolve-refund", args=(order.pk,))
+
+    anonymous = api_client.post(url, format="json")
+
+    customer = User.objects.create_user("refund-customer@example.com", "password")
+    api_client.force_authenticate(user=customer)
+    customer_response = api_client.post(url, format="json")
+
+    api_client.force_authenticate(user=create_operator("view_order"))
+    view_only = api_client.post(url, format="json")
+
+    assert anonymous.status_code == status.HTTP_401_UNAUTHORIZED
+    assert customer_response.status_code == status.HTTP_403_FORBIDDEN
+    assert view_only.status_code == status.HTTP_403_FORBIDDEN
+    order.refresh_from_db()
+    assert order.refund_status == Order.RefundStatus.REQUIRED
+    assert order.refund_resolved_at is None
+    assert order.refund_resolved_by is None
+
+
+@pytest.mark.django_db
+def test_refund_resolution_is_idempotent_for_the_same_operator(api_client):
+    order = create_order(
+        status_value=Order.Status.CANCELLED,
+        refund_status=Order.RefundStatus.REQUIRED,
+    )
+    operator = create_operator("change_order")
+    api_client.force_authenticate(user=operator)
+    url = reverse("orders:management-order-resolve-refund", args=(order.pk,))
+
+    first = api_client.post(url, format="json")
+    order.refresh_from_db()
+    resolved_at = order.refund_resolved_at
+    repeated = api_client.post(url, format="json")
+
+    assert first.status_code == status.HTTP_200_OK
+    assert repeated.status_code == status.HTTP_200_OK
+    assert first.json()["refund_status"] == Order.RefundStatus.RESOLVED
+    assert repeated.json()["refund_status"] == Order.RefundStatus.RESOLVED
+    order.refresh_from_db()
+    assert order.refund_resolved_at == resolved_at
+    assert order.refund_resolved_by == operator
+
+
+@pytest.mark.django_db
+def test_refund_resolution_rejects_invalid_state_and_different_actor_replay(
+    api_client,
+):
+    not_required = create_order(status_value=Order.Status.PAID)
+    required = create_order(
+        status_value=Order.Status.CANCELLED,
+        refund_status=Order.RefundStatus.REQUIRED,
+    )
+    first_operator = create_operator("change_order")
+    api_client.force_authenticate(user=first_operator)
+    resolved = api_client.post(
+        reverse("orders:management-order-resolve-refund", args=(required.pk,)),
+        format="json",
+    )
+
+    second_operator = User.objects.create_user(
+        "second-refund-operator@example.com", "password"
+    )
+    second_operator.is_staff = True
+    second_operator.save(update_fields=("is_staff",))
+    second_operator.user_permissions.add(
+        Permission.objects.get(
+            content_type__app_label="orders", codename="change_order"
+        )
+    )
+    api_client.force_authenticate(user=second_operator)
+    invalid_state = api_client.post(
+        reverse("orders:management-order-resolve-refund", args=(not_required.pk,)),
+        format="json",
+    )
+    different_actor = api_client.post(
+        reverse("orders:management-order-resolve-refund", args=(required.pk,)),
+        format="json",
+    )
+
+    assert resolved.status_code == status.HTTP_200_OK
+    assert invalid_state.status_code == status.HTTP_409_CONFLICT
+    assert invalid_state.json() == {"detail": "The order does not require a refund."}
+    assert different_actor.status_code == status.HTTP_409_CONFLICT
+    assert different_actor.json() == {
+        "detail": "The refund was resolved through a different command."
+    }
+
+
+@pytest.mark.django_db
+def test_refund_resolution_returns_not_found_for_unknown_order(api_client):
+    api_client.force_authenticate(user=create_operator("change_order"))
+
+    response = api_client.post(
+        reverse("orders:management-order-resolve-refund", args=(999_999,)),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json() == {"detail": "Order not found."}
