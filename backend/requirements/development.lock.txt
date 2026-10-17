@@ -61,7 +61,7 @@ pygments==2.21.0
     # via pytest
 pyjwt==2.15.1
     # via djangorestframework-simplejwt
-pytest==8.4.2
+pytest==9.0.3
     # via
     #   -r requirements/development.txt
     #   pytest-django
