@@ -18,6 +18,9 @@ runbook are documented in [`DEPLOYMENT_VPS.md`](DEPLOYMENT_VPS.md). It uses the
 separate `compose.production.yaml`; the root `compose.yaml` remains exclusively
 for local development.
 
+Release notes, validation evidence, accepted risks, and scope boundaries for
+v1.0.0 are recorded in [`CHANGELOG.md`](CHANGELOG.md).
+
 ## Current scope
 
 The Django API implements email-based customer authentication, profiles and
@@ -109,6 +112,9 @@ docker compose run --rm web pytest
 docker compose run --rm web ruff check .
 docker compose run --rm web ruff format --check .
 docker compose run --rm web python manage.py check
+docker compose run --rm web python manage.py makemigrations --check --dry-run
+docker compose run --rm web python manage.py migrate --check
+docker compose run --rm web python manage.py spectacular --file /tmp/schema.yaml --validate
 ```
 
 Run frontend checks in its container:
@@ -117,8 +123,44 @@ Run frontend checks in its container:
 docker compose run --rm --no-deps frontend npm run lint
 docker compose run --rm --no-deps frontend npm run typecheck
 docker compose run --rm --no-deps frontend npm test
+docker compose run --rm --no-deps frontend npm run test:integration
 docker compose run --rm --no-deps frontend npm run build
+docker compose run --rm --no-deps frontend npm audit --omit=dev
 ```
+
+### v1.0.0 release verification status
+
+The latest local release-hardening runs passed 761 PostgreSQL-backed backend
+tests, 68 frontend unit tests, and 5 BFF integration test results. The BFF suite
+exercises real route handlers through a running Next.js server with a controlled
+HTTP upstream; it is not described as an end-to-end public deployment test.
+Ruff, Django system and deployment-security checks, migration consistency,
+OpenAPI validation, ESLint, TypeScript checking from a clean generated state,
+the Next.js production build, dependency installation from the committed
+locks, and both production Docker image builds also passed locally.
+
+The GitHub Actions workflow is configured to repeat the backend, frontend,
+dependency-audit, and production-image gates for pushes and pull requests to
+`main`. This documentation does not claim a successful GitHub-hosted run;
+actual workflow evidence must be checked after the changes are pushed.
+
+The full npm development audit currently reports five High findings representing
+one transitive, development-only advisory, `GHSA-vfj7-8cjw-p6xm`, through
+`eslint-config-next` -> `@next/eslint-plugin-next` -> `fast-glob` ->
+`micromatch` -> `braces`. The production audit reports zero vulnerabilities,
+and no compatible patched release was available at the time of review without
+an incompatible Next.js downgrade. CI narrowly accepts only this exact known
+chain and continues to fail for unrelated, changed, or newly introduced npm
+advisories.
+
+The application has not yet been publicly deployed. Live Bale payment success,
+provider inquiry, webhook delivery/replay, and the Mini App return flow have not
+been verified against the real provider. Browser-based visual checks of RTL and
+responsive layouts at 360 px, 390 px, and desktop widths, and a browser-based
+accessibility audit, have not been completed. These are release/deployment
+acceptance gaps, not claims of completed verification. Remaining launch work is
+listed in `DEPLOYMENT_VPS.md`; deferred product work remains outside the v1.0.0
+scope described in `FRONTEND_HANDOFF.md` and `CHANGELOG.md`.
 
 ## Production settings and security
 
