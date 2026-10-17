@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import { type AuthTokens, normalizeToken } from "@/lib/auth-contract";
 import { isAuthenticationFailure } from "@/lib/auth-error-policy";
@@ -9,6 +9,7 @@ import {
   ACCESS_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
 } from "@/lib/auth-security";
+import { trustedClientIp } from "@/lib/client-identity";
 
 export class AuthSessionError extends Error {
   constructor() {
@@ -58,7 +59,7 @@ export async function withAuthenticatedSession<T>(
 
   let tokens: AuthTokens;
   try {
-    tokens = await refreshSession(refresh);
+    tokens = await refreshSession(refresh, trustedClientIp(await headers()));
   } catch {
     throw new AuthSessionError();
   }

@@ -212,6 +212,15 @@ number of trusted ingress proxies only when every proxy in that chain strips or
 replaces client-supplied forwarding headers. An incorrect value can allow IP
 throttle bypasses or combine unrelated clients under one identity.
 
+The supported production Compose topology sets this value to one. Public Caddy
+overwrites `X-Naghsh-Client-IP` from its direct peer address before forwarding
+to Next.js. The BFF validates that single IP and carries it only to Caddy's
+Docker-internal listener; that listener overwrites `X-Forwarded-For` and removes
+the internal header before proxying to Django. Direct Django routes remove the
+internal header as well. This contract depends on Caddy being the only public
+service and must be revisited before adding a CDN, load balancer, or separately
+published frontend.
+
 The default local-memory cache keeps this protection dependency-free and is
 appropriate for the image's conservative single-worker default. Each worker or
 replica has an independent counter; deployments that scale beyond one process

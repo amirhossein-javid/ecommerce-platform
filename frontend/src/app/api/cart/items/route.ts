@@ -25,6 +25,7 @@ import {
   hasAuthenticationCookies,
   withAuthenticatedSession,
 } from "@/lib/authenticated-request";
+import { trustedClientIp } from "@/lib/client-identity";
 
 async function parseRequestBody(request: Request) {
   if (!hasJsonContentType(request.headers)) {
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
   );
 
   try {
+    const clientIp = trustedClientIp(request.headers);
     let result;
 
     try {
@@ -77,6 +79,7 @@ export async function POST(request: Request) {
         token,
         input.productSlug,
         input.quantity,
+        clientIp,
       );
     } catch (error) {
       if (!(token && error instanceof CartApiError && error.status === 404)) {
@@ -87,6 +90,7 @@ export async function POST(request: Request) {
         undefined,
         input.productSlug,
         input.quantity,
+        clientIp,
       );
     }
 

@@ -27,14 +27,22 @@ generic `/api/*` proxy rule.
 The `data` network is internal and contains only PostgreSQL and Django. The
 `app` bridge contains Caddy, Next.js, and Django. Django needs outbound access
 to Bale, while PostgreSQL has neither an external network nor a published port.
-Caddy ignores client-provided forwarding headers by default and writes the
-trusted `X-Forwarded-*` values consumed by Django. Do not put another proxy or
-CDN in front without explicitly revisiting Caddy trusted-proxy configuration.
+Caddy ignores client-provided forwarding headers by default. On requests sent
+to Next.js it overwrites the internal `X-Naghsh-Client-IP` header with the
+direct peer address. The BFF validates and forwards that value to the
+Docker-only Caddy listener, which replaces `X-Forwarded-For` before Django uses
+it for anonymous throttle identity and removes the internal header. Direct
+Django routes also remove the internal header. Do not expose Next.js, the
+internal Caddy listener, or Gunicorn outside the `app` network, and do not put
+another proxy or CDN in front without explicitly revisiting Caddy trusted-proxy
+configuration.
 
 Next.js reaches Django through Caddy's Docker-only port 8080. That listener is
 not published on the VPS; it normalizes `Host` and trusted HTTPS forwarding
-headers so Django's production HTTPS redirect remains enabled without breaking
-server-to-server BFF calls. Do not point `DJANGO_API_URL` directly at Gunicorn.
+headers, including the validated client address carried by the BFF, so Django's
+production HTTPS redirect and per-client anonymous throttles remain correct
+without breaking server-to-server BFF calls. Do not point `DJANGO_API_URL`
+directly at Gunicorn.
 
 ## VPS prerequisites
 

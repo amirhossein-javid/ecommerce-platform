@@ -14,6 +14,7 @@ import {
   isCart,
   normalizeGuestCartToken,
 } from "@/lib/cart-contract";
+import { forwardTrustedClientIp } from "@/lib/client-identity";
 import { GUEST_CART_COOKIE_NAME } from "@/lib/cart-security";
 
 const CART_PATH = "/api/v1/cart/";
@@ -119,10 +120,12 @@ async function requestDjango(
   init: RequestInit,
   token?: string,
   access?: string,
+  clientIp?: string,
 ) {
   const apiOrigin = getApiOrigin();
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
+  forwardTrustedClientIp(headers, clientIp);
 
   if (token) {
     headers.set(CART_TOKEN_HEADER, token);
@@ -193,6 +196,7 @@ export async function addGuestCartItem(
   token: string | undefined,
   productSlug: string,
   quantity: number,
+  clientIp?: string,
 ) {
   const { apiOrigin, response } = await requestDjango(
     CART_ITEMS_PATH,
@@ -202,6 +206,8 @@ export async function addGuestCartItem(
       body: JSON.stringify({ product_slug: productSlug, quantity }),
     },
     token,
+    undefined,
+    clientIp,
   );
   const responseToken = normalizeGuestCartToken(
     response.headers.get(CART_TOKEN_HEADER) ?? undefined,
@@ -239,6 +245,7 @@ export async function updateGuestCartItem(
   token: string,
   itemId: number,
   quantity: number,
+  clientIp?: string,
 ) {
   await requestDjango(
     `${CART_ITEMS_PATH}${itemId}/`,
@@ -248,15 +255,23 @@ export async function updateGuestCartItem(
       body: JSON.stringify({ quantity }),
     },
     token,
+    undefined,
+    clientIp,
   );
   return fetchGuestCart(token);
 }
 
-export async function removeGuestCartItem(token: string, itemId: number) {
+export async function removeGuestCartItem(
+  token: string,
+  itemId: number,
+  clientIp?: string,
+) {
   await requestDjango(
     `${CART_ITEMS_PATH}${itemId}/`,
     { method: "DELETE" },
     token,
+    undefined,
+    clientIp,
   );
   return fetchGuestCart(token);
 }

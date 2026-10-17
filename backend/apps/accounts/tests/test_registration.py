@@ -27,6 +27,11 @@ ONE_REGISTRATION_PER_MINUTE = {
     "NUM_PROXIES": 0,
 }
 
+ONE_REGISTRATION_PER_MINUTE_BEHIND_ONE_PROXY = {
+    **ONE_REGISTRATION_PER_MINUTE,
+    "NUM_PROXIES": 1,
+}
+
 
 @pytest.fixture
 def api_client():
@@ -77,6 +82,7 @@ def test_registration_throttle_uses_remote_ip_and_prevents_user_creation(
         {**VALID_REGISTRATION_DATA, "email": "blocked@example.com"},
         format="json",
         HTTP_X_FORWARDED_FOR="198.51.100.2",
+        HTTP_X_NAGHSH_CLIENT_IP="198.51.100.3",
     )
 
     assert first_response.status_code == status.HTTP_201_CREATED
@@ -93,6 +99,97 @@ def test_registration_throttle_uses_remote_ip_and_prevents_user_creation(
 
     assert independent_response.status_code == status.HTTP_201_CREATED
     assert CustomerProfile.objects.count() == 2
+
+
+@pytest.mark.django_db
+@override_settings(
+    REST_FRAMEWORK=ONE_REGISTRATION_PER_MINUTE_BEHIND_ONE_PROXY,
+)
+def test_trusted_proxy_gives_independent_clients_independent_throttle_buckets(
+    api_client, configure_throttle_rates
+):
+    configure_throttle_rates(auth_register="1/minute")
+
+    first_client = api_client.post(
+        reverse("accounts:register"),
+        VALID_REGISTRATION_DATA,
+        format="json",
+        REMOTE_ADDR="172.20.0.10",
+        HTTP_X_FORWARDED_FOR="203.0.113.10",
+    )
+    second_client = api_client.post(
+        reverse("accounts:register"),
+        {**VALID_REGISTRATION_DATA, "email": "second-client@example.com"},
+        format="json",
+        REMOTE_ADDR="172.20.0.10",
+        HTTP_X_FORWARDED_FOR="203.0.113.11",
+    )
+
+    assert first_client.status_code == status.HTTP_201_CREATED
+    assert second_client.status_code == status.HTTP_201_CREATED
+    assert CustomerProfile.objects.count() == 2
+
+
+@pytest.mark.django_db
+@override_settings(
+    REST_FRAMEWORK=ONE_REGISTRATION_PER_MINUTE_BEHIND_ONE_PROXY,
+)
+def test_trusted_proxy_keeps_one_clients_requests_in_the_same_throttle_bucket(
+    api_client, configure_throttle_rates
+):
+    configure_throttle_rates(auth_register="1/minute")
+
+    first_response = api_client.post(
+        reverse("accounts:register"),
+        VALID_REGISTRATION_DATA,
+        format="json",
+        REMOTE_ADDR="172.20.0.10",
+        HTTP_X_FORWARDED_FOR="203.0.113.10",
+    )
+    blocked_response = api_client.post(
+        reverse("accounts:register"),
+        {**VALID_REGISTRATION_DATA, "email": "same-client@example.com"},
+        format="json",
+        REMOTE_ADDR="172.20.0.10",
+        HTTP_X_FORWARDED_FOR="203.0.113.10",
+    )
+
+    assert first_response.status_code == status.HTTP_201_CREATED
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert User.objects.filter(email="same-client@example.com").exists() is False
+
+
+@pytest.mark.django_db
+@override_settings(
+    REST_FRAMEWORK=ONE_REGISTRATION_PER_MINUTE_BEHIND_ONE_PROXY,
+)
+def test_trusted_proxy_throttle_cannot_be_evaded_with_spoofed_ip_headers(
+    api_client, configure_throttle_rates
+):
+    configure_throttle_rates(auth_register="1/minute")
+
+    first_response = api_client.post(
+        reverse("accounts:register"),
+        VALID_REGISTRATION_DATA,
+        format="json",
+        REMOTE_ADDR="172.20.0.10",
+        HTTP_X_FORWARDED_FOR="198.51.100.1, 203.0.113.10",
+        HTTP_X_REAL_IP="198.51.100.2",
+        HTTP_X_NAGHSH_CLIENT_IP="198.51.100.3",
+    )
+    blocked_response = api_client.post(
+        reverse("accounts:register"),
+        {**VALID_REGISTRATION_DATA, "email": "spoofed@example.com"},
+        format="json",
+        REMOTE_ADDR="172.20.0.10",
+        HTTP_X_FORWARDED_FOR="198.51.100.200, 203.0.113.10",
+        HTTP_X_REAL_IP="198.51.100.201",
+        HTTP_X_NAGHSH_CLIENT_IP="198.51.100.202",
+    )
+
+    assert first_response.status_code == status.HTTP_201_CREATED
+    assert blocked_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert User.objects.filter(email="spoofed@example.com").exists() is False
 
 
 @pytest.mark.django_db

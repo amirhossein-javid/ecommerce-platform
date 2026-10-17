@@ -26,6 +26,7 @@ import {
   hasAuthenticationCookies,
   withAuthenticatedSession,
 } from "@/lib/authenticated-request";
+import { trustedClientIp } from "@/lib/client-identity";
 
 type CartItemRouteProps = {
   params: Promise<{ id: string }>;
@@ -80,7 +81,12 @@ export async function PATCH(
 
   try {
     return privateJson(
-      await updateGuestCartItem(token, itemId, input.quantity),
+      await updateGuestCartItem(
+        token,
+        itemId,
+        input.quantity,
+        trustedClientIp(request.headers),
+      ),
     );
   } catch (error) {
     return cartRouteError(error);
@@ -122,7 +128,13 @@ export async function DELETE(
   }
 
   try {
-    return privateJson(await removeGuestCartItem(token, itemId));
+    return privateJson(
+      await removeGuestCartItem(
+        token,
+        itemId,
+        trustedClientIp(request.headers),
+      ),
+    );
   } catch (error) {
     return cartRouteError(error);
   }
