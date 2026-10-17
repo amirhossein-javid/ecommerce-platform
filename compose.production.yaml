@@ -35,7 +35,7 @@ services:
     build:
       context: ./backend
       args:
-        REQUIREMENTS_FILE: requirements/production.txt
+        REQUIREMENTS_FILE: requirements/production.lock.txt
     restart: unless-stopped
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production

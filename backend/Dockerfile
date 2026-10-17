@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-ARG REQUIREMENTS_FILE=requirements/production.txt
+ARG REQUIREMENTS_FILE=requirements/production.lock.txt
 
 COPY requirements ./requirements
 RUN --mount=type=cache,target=/root/.cache/pip \
