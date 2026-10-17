@@ -522,3 +522,7 @@ Neither Bale credentials nor raw webhook payloads are persisted. The customer
 API exposes the opaque invoice handoff value as `payment_identifier`, but does
 not expose the bot/provider tokens, internal idempotency key, gateway name,
 provider transaction identity, or webhook internals.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
