@@ -14,6 +14,7 @@ import {
   isCustomerAddress,
   isCustomerAddressList,
 } from "@/lib/address-contract";
+import { forwardTrustedClientIp } from "@/lib/client-identity";
 
 const LOGIN_PATH = "/api/v1/auth/login/";
 const REGISTER_PATH = "/api/v1/auth/register/";
@@ -54,9 +55,14 @@ async function parsePayload(response: Response) {
   }
 }
 
-async function requestDjango(path: string, init: RequestInit) {
+async function requestDjango(
+  path: string,
+  init: RequestInit,
+  clientIp?: string,
+) {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
+  forwardTrustedClientIp(headers, clientIp);
 
   let response: Response;
   try {
@@ -80,12 +86,16 @@ async function requestDjango(path: string, init: RequestInit) {
   return response;
 }
 
-async function requestTokens(path: string, body: unknown): Promise<AuthTokens> {
+async function requestTokens(
+  path: string,
+  body: unknown,
+  clientIp?: string,
+): Promise<AuthTokens> {
   const response = await requestDjango(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }, clientIp);
   const payload = await parsePayload(response);
   if (!isAuthTokens(payload)) {
     throw new AuthApiError();
@@ -93,28 +103,28 @@ async function requestTokens(path: string, body: unknown): Promise<AuthTokens> {
   return payload;
 }
 
-export function loginCustomer(email: string, password: string) {
-  return requestTokens(LOGIN_PATH, { email, password });
+export function loginCustomer(email: string, password: string, clientIp?: string) {
+  return requestTokens(LOGIN_PATH, { email, password }, clientIp);
 }
 
-export async function registerCustomer(input: RegistrationInput) {
+export async function registerCustomer(input: RegistrationInput, clientIp?: string) {
   await requestDjango(REGISTER_PATH, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
-  });
+  }, clientIp);
 }
 
-export function refreshCustomerTokens(refresh: string) {
-  return requestTokens(REFRESH_PATH, { refresh });
+export function refreshCustomerTokens(refresh: string, clientIp?: string) {
+  return requestTokens(REFRESH_PATH, { refresh }, clientIp);
 }
 
-export async function logoutCustomer(refresh: string) {
+export async function logoutCustomer(refresh: string, clientIp?: string) {
   await requestDjango(LOGOUT_PATH, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh }),
-  });
+  }, clientIp);
 }
 
 export async function fetchCustomerProfile(

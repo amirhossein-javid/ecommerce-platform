@@ -16,6 +16,7 @@ import {
   hasJsonContentType,
   isTrustedMutationRequest,
 } from "@/lib/cart-security";
+import { trustedClientIp } from "@/lib/client-identity";
 
 export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request.url, request.headers)) {
@@ -37,7 +38,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const tokens = await loginCustomer(input.email, input.password);
+    const clientIp = trustedClientIp(request.headers);
+    const tokens = await loginCustomer(input.email, input.password, clientIp);
     let accessGranted = false;
     let accessCheckUnavailable = false;
     try {
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
     }
     if (!accessGranted) {
       try {
-        await logoutCustomer(tokens.refresh);
+        await logoutCustomer(tokens.refresh, clientIp);
       } catch {
         // The unexposed refresh token is revoked on a best-effort basis.
       }

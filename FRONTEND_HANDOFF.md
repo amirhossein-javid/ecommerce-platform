@@ -391,7 +391,11 @@ and product-review flows.
   JavaScript-readable cookies.
 - Preserve CSRF/origin protection on cookie-authenticated BFF mutations.
 - Serialize rotating refresh-token use and update cookies atomically.
-- Forward only the Bearer token and, for guest cart calls, `X-Cart-Token`.
+- Forward the Bearer token and, for guest cart calls, `X-Cart-Token`. The
+  production BFF also carries the ingress-written, validated
+  `X-Naghsh-Client-IP` only to the Docker-internal Caddy listener so Django can
+  enforce per-client anonymous throttles; browser-provided forwarding headers
+  are never trusted.
 - Merge the guest cart explicitly after login and clear its cookie only after
   the merge outcome is handled.
 - Treat all client payment return data as untrusted and poll Django order state

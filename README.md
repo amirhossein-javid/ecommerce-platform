@@ -13,6 +13,14 @@ remain at the root.
 The executable Next.js integration boundary is documented in
 [`FRONTEND_HANDOFF.md`](FRONTEND_HANDOFF.md).
 
+The provider-neutral single Ubuntu VPS production stack and operational
+runbook are documented in [`DEPLOYMENT_VPS.md`](DEPLOYMENT_VPS.md). It uses the
+separate `compose.production.yaml`; the root `compose.yaml` remains exclusively
+for local development.
+
+Release notes, validation evidence, accepted risks, and scope boundaries for
+v1.0.0 are recorded in [`CHANGELOG.md`](CHANGELOG.md).
+
 ## Current scope
 
 The Django API implements email-based customer authentication, profiles and
@@ -104,6 +112,9 @@ docker compose run --rm web pytest
 docker compose run --rm web ruff check .
 docker compose run --rm web ruff format --check .
 docker compose run --rm web python manage.py check
+docker compose run --rm web python manage.py makemigrations --check --dry-run
+docker compose run --rm web python manage.py migrate --check
+docker compose run --rm web python manage.py spectacular --file /tmp/schema.yaml --validate
 ```
 
 Run frontend checks in its container:
@@ -112,8 +123,44 @@ Run frontend checks in its container:
 docker compose run --rm --no-deps frontend npm run lint
 docker compose run --rm --no-deps frontend npm run typecheck
 docker compose run --rm --no-deps frontend npm test
+docker compose run --rm --no-deps frontend npm run test:integration
 docker compose run --rm --no-deps frontend npm run build
+docker compose run --rm --no-deps frontend npm audit --omit=dev
 ```
+
+### v1.0.0 release verification status
+
+The latest local release-hardening runs passed 761 PostgreSQL-backed backend
+tests, 68 frontend unit tests, and 5 BFF integration test results. The BFF suite
+exercises real route handlers through a running Next.js server with a controlled
+HTTP upstream; it is not described as an end-to-end public deployment test.
+Ruff, Django system and deployment-security checks, migration consistency,
+OpenAPI validation, ESLint, TypeScript checking from a clean generated state,
+the Next.js production build, dependency installation from the committed
+locks, and both production Docker image builds also passed locally.
+
+The GitHub Actions workflow is configured to repeat the backend, frontend,
+dependency-audit, and production-image gates for pushes and pull requests to
+`main`. This documentation does not claim a successful GitHub-hosted run;
+actual workflow evidence must be checked after the changes are pushed.
+
+The full npm development audit currently reports five High findings representing
+one transitive, development-only advisory, `GHSA-vfj7-8cjw-p6xm`, through
+`eslint-config-next` -> `@next/eslint-plugin-next` -> `fast-glob` ->
+`micromatch` -> `braces`. The production audit reports zero vulnerabilities,
+and no compatible patched release was available at the time of review without
+an incompatible Next.js downgrade. CI narrowly accepts only this exact known
+chain and continues to fail for unrelated, changed, or newly introduced npm
+advisories.
+
+The application has not yet been publicly deployed. Live Bale payment success,
+provider inquiry, webhook delivery/replay, and the Mini App return flow have not
+been verified against the real provider. Browser-based visual checks of RTL and
+responsive layouts at 360 px, 390 px, and desktop widths, and a browser-based
+accessibility audit, have not been completed. These are release/deployment
+acceptance gaps, not claims of completed verification. Remaining launch work is
+listed in `DEPLOYMENT_VPS.md`; deferred product work remains outside the v1.0.0
+scope described in `FRONTEND_HANDOFF.md` and `CHANGELOG.md`.
 
 ## Production settings and security
 
@@ -207,6 +254,15 @@ number of trusted ingress proxies only when every proxy in that chain strips or
 replaces client-supplied forwarding headers. An incorrect value can allow IP
 throttle bypasses or combine unrelated clients under one identity.
 
+The supported production Compose topology sets this value to one. Public Caddy
+overwrites `X-Naghsh-Client-IP` from its direct peer address before forwarding
+to Next.js. The BFF validates that single IP and carries it only to Caddy's
+Docker-internal listener; that listener overwrites `X-Forwarded-For` and removes
+the internal header before proxying to Django. Direct Django routes remove the
+internal header as well. This contract depends on Caddy being the only public
+service and must be revisited before adding a CDN, load balancer, or separately
+published frontend.
+
 The default local-memory cache keeps this protection dependency-free and is
 appropriate for the image's conservative single-worker default. Each worker or
 replica has an independent counter; deployments that scale beyond one process
@@ -215,6 +271,41 @@ ingress. DRF throttling is defense in depth, not a substitute for provider or
 network-level denial-of-service protection.
 
 ## Production image and deployment lifecycle
+
+The frontend Dockerfile defaults to a minimal Next.js standalone production
+runtime. It installs the existing lockfile with `npm ci`, builds in an isolated
+stage, copies only the standalone server plus public/static assets, and runs as
+the non-root `node` user:
+
+```bash
+docker build --target production -t ecommerce-frontend ./frontend
+docker run --rm -p 3000:3000 \
+  -e DJANGO_API_URL=http://django.internal:8000 \
+  -e DJANGO_PUBLIC_MEDIA_URL=https://media.example.com/ \
+  ecommerce-frontend
+```
+
+`DJANGO_API_URL` is the required server-only Django origin. Do not expose it
+through a `NEXT_PUBLIC_` variable. `DJANGO_PUBLIC_MEDIA_URL` is optional when
+internal Django media URLs need a browser-visible origin, and
+`PAYMENT_REDIRECT_ALLOWED_ORIGINS` is the optional comma-separated allowlist for
+generic HTTPS payment handoff URLs. Bale invoice identifiers do not use that
+allowlist. `PORT` defaults to `3000`; the image fixes `NODE_ENV=production` so
+the existing BFF cookies are `Secure`, and listens on `0.0.0.0`.
+
+The frontend image healthcheck calls `GET /api/health` on its own loopback
+listener. That fixed, no-store liveness response does not contact Django,
+PostgreSQL, or the user session. Deployment-level readiness must separately
+exercise frontend-to-Django connectivity and Django's database readiness.
+
+TLS termination, accepted public hosts, and forwarding-header sanitization
+remain ingress responsibilities. Preserve the documented same-origin browser
+topology. For the supported single-VPS topology, `compose.production.yaml` and
+`deploy/Caddyfile` provide the production boundary described in
+`DEPLOYMENT_VPS.md`; provider-specific off-server backup and monitoring remain
+deployment decisions. The root `compose.yaml` explicitly builds the Dockerfile
+`development` target and retains the existing bind mounts and development
+command.
 
 The default backend Docker build installs production requirements, collects immutable
 static assets, and creates a non-root image. It does not contact PostgreSQL or
@@ -473,3 +564,7 @@ Neither Bale credentials nor raw webhook payloads are persisted. The customer
 API exposes the opaque invoice handoff value as `payment_identifier`, but does
 not expose the bot/provider tokens, internal idempotency key, gateway name,
 provider transaction identity, or webhook internals.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

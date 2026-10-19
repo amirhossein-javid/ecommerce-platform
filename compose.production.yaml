@@ -1,0 +1,202 @@
+name: naghsh-e-jahan-production
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:17.11-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 60s
+    logging: *default-logging
+
+  backend:
+    image: naghsh-e-jahan-backend:${APP_VERSION:?Set APP_VERSION in .env.production}
+    build:
+      context: ./backend
+      args:
+        REQUIREMENTS_FILE: requirements/production.lock.txt
+    restart: unless-stopped
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env.production}
+      DJANGO_JWT_SIGNING_KEY: ${DJANGO_JWT_SIGNING_KEY:?Set DJANGO_JWT_SIGNING_KEY in .env.production}
+      DJANGO_SECRET_KEY_FALLBACKS: ${DJANGO_SECRET_KEY_FALLBACKS:-}
+      DJANGO_ALLOWED_HOSTS: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production},backend
+      DJANGO_CSRF_TRUSTED_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+      DJANGO_CORS_ALLOWED_ORIGINS: ""
+      DJANGO_TRUST_X_FORWARDED_PROTO: "True"
+      DJANGO_THROTTLE_NUM_PROXIES: "1"
+      DJANGO_SECURE_HSTS_SECONDS: ${DJANGO_SECURE_HSTS_SECONDS:-3600}
+      DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: ${DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS:-False}
+      DJANGO_SECURE_HSTS_PRELOAD: ${DJANGO_SECURE_HSTS_PRELOAD:-False}
+      DJANGO_DB_CONN_MAX_AGE: ${DJANGO_DB_CONN_MAX_AGE:-60}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+      DJANGO_APP_LOG_LEVEL: ${DJANGO_APP_LOG_LEVEL:-INFO}
+      DJANGO_THROTTLE_AUTH_REGISTER_RATE: ${DJANGO_THROTTLE_AUTH_REGISTER_RATE:-5/hour}
+      DJANGO_THROTTLE_AUTH_LOGIN_RATE: ${DJANGO_THROTTLE_AUTH_LOGIN_RATE:-10/minute}
+      DJANGO_THROTTLE_AUTH_REFRESH_RATE: ${DJANGO_THROTTLE_AUTH_REFRESH_RATE:-30/minute}
+      DJANGO_THROTTLE_CART_MUTATION_RATE: ${DJANGO_THROTTLE_CART_MUTATION_RATE:-60/minute}
+      DJANGO_THROTTLE_CHECKOUT_RATE: ${DJANGO_THROTTLE_CHECKOUT_RATE:-10/minute}
+      DJANGO_THROTTLE_PAYMENT_INITIATE_RATE: ${DJANGO_THROTTLE_PAYMENT_INITIATE_RATE:-10/minute}
+      DJANGO_THROTTLE_PAYMENT_VERIFY_RATE: ${DJANGO_THROTTLE_PAYMENT_VERIFY_RATE:-20/minute}
+      DJANGO_THROTTLE_BALE_WEBHOOK_RATE: ${DJANGO_THROTTLE_BALE_WEBHOOK_RATE:-300/minute}
+      DJANGO_THROTTLE_REVIEW_MUTATION_RATE: ${DJANGO_THROTTLE_REVIEW_MUTATION_RATE:-10/hour}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.production}
+      PORT: "8000"
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+      PAYMENT_GATEWAY_CLASS: ${PAYMENT_GATEWAY_CLASS:-apps.payments.bale.BaleGateway}
+      BALE_BOT_TOKEN: ${BALE_BOT_TOKEN:?Set BALE_BOT_TOKEN in .env.production}
+      BALE_PROVIDER_TOKEN: ${BALE_PROVIDER_TOKEN:?Set BALE_PROVIDER_TOKEN in .env.production}
+      BALE_CONNECT_TIMEOUT: ${BALE_CONNECT_TIMEOUT:-3.0}
+      BALE_READ_TIMEOUT: ${BALE_READ_TIMEOUT:-10.0}
+      BALE_WEBHOOK_URL: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.production}/api/v1/payments/bale/webhook/
+    volumes:
+      - media_data:/app/media
+    expose:
+      - "8000"
+    networks:
+      - app
+      - data
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 35s
+    logging: *default-logging
+
+  frontend:
+    image: naghsh-e-jahan-frontend:${APP_VERSION:?Set APP_VERSION in .env.production}
+    build:
+      context: ./frontend
+      target: production
+    restart: unless-stopped
+    environment:
+      DJANGO_API_URL: http://caddy:8080
+      DJANGO_PUBLIC_MEDIA_URL: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.production}/media/
+      PAYMENT_REDIRECT_ALLOWED_ORIGINS: ${PAYMENT_REDIRECT_ALLOWED_ORIGINS:-}
+    volumes:
+      - frontend_cache:/app/.next/cache
+    expose:
+      - "3000"
+    networks:
+      - app
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    expose:
+      - "8080"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - media_data:/srv/media:ro
+    networks:
+      - app
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:2019/config/ || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 15s
+    logging: *default-logging
+
+  backup:
+    image: postgres:17.11-alpine
+    profiles:
+      - tools
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - media_data:/media:ro
+    networks:
+      - data
+    command:
+      - "true"
+    logging: *default-logging
+
+  maintenance:
+    image: postgres:17.11-alpine
+    profiles:
+      - tools
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - media_data:/media
+    networks:
+      - data
+    command:
+      - "true"
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  media_data:
+  frontend_cache:
+  caddy_data:
+  caddy_config:
+
+networks:
+  app:
+    driver: bridge
+  data:
+    driver: bridge
+    internal: true

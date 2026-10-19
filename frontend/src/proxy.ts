@@ -7,6 +7,7 @@ import {
   getAuthCookieOptions,
   REFRESH_COOKIE_NAME,
 } from "@/lib/auth-security";
+import { trustedClientIp } from "@/lib/client-identity";
 
 function clearSession(response: NextResponse) {
   const isProduction = process.env.NODE_ENV === "production";
@@ -28,7 +29,7 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    const tokens = await refreshSession(refresh);
+    const tokens = await refreshSession(refresh, trustedClientIp(request.headers));
     request.cookies.set(ACCESS_COOKIE_NAME, tokens.access);
     request.cookies.set(REFRESH_COOKIE_NAME, tokens.refresh);
     const requestHeaders = new Headers(request.headers);

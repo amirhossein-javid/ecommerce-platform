@@ -5,6 +5,7 @@ import {
   hasJsonContentType,
   isTrustedMutationRequest,
 } from "@/lib/cart-security";
+import { trustedClientIp } from "@/lib/client-identity";
 
 export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request.url, request.headers)) {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await registerCustomer(input);
+    await registerCustomer(input, trustedClientIp(request.headers));
     return privateAuthJson({ registered: true }, 201);
   } catch (error) {
     return authRouteError(error, "register");

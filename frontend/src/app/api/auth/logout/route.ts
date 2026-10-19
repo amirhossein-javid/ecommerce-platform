@@ -8,6 +8,7 @@ import {
   hasJsonContentType,
   isTrustedMutationRequest,
 } from "@/lib/cart-security";
+import { trustedClientIp } from "@/lib/client-identity";
 
 export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request.url, request.headers)) {
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
 
   if (refresh) {
     try {
-      await logoutCustomer(refresh);
+      await logoutCustomer(refresh, trustedClientIp(request.headers));
     } catch {
       // Local credentials are always cleared, including stale/invalid remote tokens.
     }

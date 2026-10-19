@@ -17,7 +17,7 @@ services:
     build:
       context: ./backend
       args:
-        REQUIREMENTS_FILE: requirements/development.txt
+        REQUIREMENTS_FILE: requirements/development.lock.txt
     command: >-
       sh -c "python manage.py migrate &&
       python manage.py runserver 0.0.0.0:8000"
@@ -60,6 +60,7 @@ services:
   frontend:
     build:
       context: ./frontend
+      target: development
     command: npm run dev -- --hostname 0.0.0.0 --webpack
     environment:
       DJANGO_API_URL: ${DJANGO_API_URL:-http://web:8000}
