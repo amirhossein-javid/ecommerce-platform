@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { AuthApiError } from "@/lib/auth-api";
 import type { AuthTokens } from "@/lib/auth-contract";
+import { RefreshFailure } from "@/lib/refresh-failure";
 import {
   ACCESS_COOKIE_NAME,
   getAuthCookieOptions,
@@ -16,6 +17,21 @@ const PRIVATE_HEADERS = {
 
 export function privateAuthJson(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: PRIVATE_HEADERS });
+}
+
+export function refreshFailureResponse(error: unknown) {
+  if (!(error instanceof RefreshFailure) || error.status === 401) return;
+  const response = privateAuthJson(
+    {
+      error: error.status === 429
+        ? "تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید."
+        : "سرویس حساب کاربری موقتاً در دسترس نیست. کمی بعد دوباره تلاش کنید.",
+      code: error.status === 429 ? "rate-limited" : "session_unavailable",
+    },
+    error.status,
+  );
+  if (error.retryAfter) response.headers.set("Retry-After", error.retryAfter);
+  return response;
 }
 
 export function setAuthCookies(response: NextResponse, tokens: AuthTokens) {

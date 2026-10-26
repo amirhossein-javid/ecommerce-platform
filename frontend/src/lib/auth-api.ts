@@ -90,11 +90,13 @@ async function requestTokens(
   path: string,
   body: unknown,
   clientIp?: string,
+  signal?: AbortSignal,
 ): Promise<AuthTokens> {
   const response = await requestDjango(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   }, clientIp);
   const payload = await parsePayload(response);
   if (!isAuthTokens(payload)) {
@@ -116,7 +118,7 @@ export async function registerCustomer(input: RegistrationInput, clientIp?: stri
 }
 
 export function refreshCustomerTokens(refresh: string, clientIp?: string) {
-  return requestTokens(REFRESH_PATH, { refresh }, clientIp);
+  return requestTokens(REFRESH_PATH, { refresh }, clientIp, AbortSignal.timeout(10_000));
 }
 
 export async function logoutCustomer(refresh: string, clientIp?: string) {

@@ -163,7 +163,7 @@ function sameOriginJson(baseUrl: string, body: unknown, cookies?: string) {
   };
 }
 
-test("Next.js BFF route integration", { timeout: 180_000 }, async (t) => {
+test("Next.js BFF route integration", { timeout: 300_000 }, async (t) => {
   let responder: BackendResponder = () => ({ status: 500, body: { detail: "unset" } });
   let requests: RecordedRequest[] = [];
   const backend = createServer(async (request, response) => {
@@ -538,6 +538,175 @@ test("Next.js BFF route integration", { timeout: 180_000 }, async (t) => {
         assert.match(response.headers.get("cache-control") ?? "", /no-store/);
         assert(requests.length > 0);
         assert(requests.every((request) => request.pathname === "/api/v1/auth/login/"));
+      });
+    }
+    const refreshCases: Array<{
+      name: string;
+      reply: BackendReply;
+      status: number;
+      retryAfter?: string;
+      timeout?: boolean;
+    }> = [
+      { name: "invalid or revoked", reply: { status: 401 }, status: 401 },
+      { name: "limited seconds", reply: { status: 429, headers: { "Retry-After": "60" } }, status: 429, retryAfter: "60" },
+      { name: "limited HTTP date", reply: { status: 429, headers: { "Retry-After": retryDate } }, status: 429, retryAfter: retryDate },
+      { name: "limited invalid Retry-After", reply: { status: 429, headers: { "Retry-After": "private-backend-detail" } }, status: 429 },
+      { name: "limited without Retry-After", reply: { status: 429 }, status: 429 },
+      { name: "server 500", reply: { status: 500 }, status: 503 },
+      { name: "server 503", reply: { status: 503 }, status: 503 },
+      { name: "network failure after possible rotation", reply: { disconnect: true }, status: 503 },
+      { name: "timeout after possible rotation", reply: {}, status: 503, timeout: true },
+      { name: "malformed successful rotation", reply: { body: { access: "unverified-access" } }, status: 503 },
+      { name: "unexpected rejection", reply: { status: 400 }, status: 503 },
+    ];
+    const refreshPaths = [
+      { name: "customer", url: "/api/account/profile", access: "store_access", refresh: "store_refresh" },
+      { name: "customer-session", url: "/api/auth/session", access: "store_access", refresh: "store_refresh" },
+      { name: "management", url: "/api/management/dashboard", access: "management_access", refresh: "management_refresh" },
+      { name: "proxy", url: "/api/auth/session", access: "store_access", refresh: "store_refresh" },
+    ];
+    for (const path of refreshPaths) {
+      for (const scenario of refreshCases) {
+        await t.test(`${path.name} refresh: ${scenario.name}`, async () => {
+          requests = [];
+          responder = async (request) => {
+            if (request.pathname !== "/api/v1/auth/token/refresh/") {
+              return { status: 401 };
+            }
+            if (scenario.timeout) await new Promise((resolve) => setTimeout(resolve, 11_000));
+            return {
+              body: { detail: "private-backend-detail", refresh: "unexposed-refresh" },
+              ...scenario.reply,
+            };
+          };
+          const response = await fetch(`${baseUrl}${path.url}`, {
+            headers: { Cookie: cookieHeader({
+              ...(path.name === "proxy" ? {} : { [path.access]: "expired-access" }),
+              [path.refresh]: `${path.name}-${scenario.name.replaceAll(" ", "-")}`,
+            }) },
+          });
+          assert.equal(response.status, scenario.status);
+          assert.equal(response.headers.get("retry-after"), scenario.retryAfter ?? null);
+          const body = await response.text();
+          assert.doesNotMatch(body, /private-backend-detail|unexposed-refresh|unverified-access|expired-access/);
+          assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+          const cookies = setCookieHeaders(response);
+          if (scenario.status === 401) {
+            assert.equal(cookieValue(response, path.access), "");
+            assert.equal(cookieValue(response, path.refresh), "");
+            assert(cookies.every((cookie) => cookie.includes("Max-Age=0") && cookie.includes("HttpOnly")));
+            if (path.name === "management") assert(cookies.every((cookie) => cookie.startsWith("management_")));
+          } else {
+            assert.deepEqual(cookies, []);
+            assert.doesNotMatch(body, /session_expired|نشست شما منقضی/);
+          }
+          assert.equal(requests.filter((r) => r.pathname === "/api/v1/auth/token/refresh/").length, 1);
+          // The failed initial authorization is never retried after failed refresh.
+          assert.equal(requests.filter((r) => r.pathname !== "/api/v1/auth/token/refresh/").length, path.name === "proxy" ? 0 : 1);
+        });
+      }
+    }
+
+    for (const path of refreshPaths) {
+      for (const success of [true, false]) {
+        await t.test(`${path.name} concurrent refresh shares ${success ? "rotation" : "temporary failure"}`, async () => {
+          requests = [];
+          responder = async (request) => {
+            if (request.pathname === "/api/v1/auth/token/refresh/") {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              return success
+                ? { body: { access: "rotated-access", refresh: "rotated-refresh" } }
+                : { status: 503 };
+            }
+            assert.equal(request.headers.authorization, "Bearer rotated-access");
+            return { body: path.name === "management" ? {
+              order_count: 1, successful_revenue: "1000", pending_fulfillment_count: 1,
+              low_stock_product_count: 0, low_stock_threshold: 5,
+            } : CUSTOMER };
+          };
+          const responses = await Promise.all([1, 2].map(() => fetch(`${baseUrl}${path.url}`, {
+            headers: { Cookie: cookieHeader({ [path.refresh]: `concurrent-${path.name}-${success}` }) },
+          })));
+          for (const response of responses) {
+            assert.equal(response.status, success ? 200 : 503);
+            if (success) {
+              assert.equal(cookieValue(response, path.access), "rotated-access");
+              assert.equal(cookieValue(response, path.refresh), "rotated-refresh");
+              assert(setCookieHeaders(response).every((cookie) => cookie.includes("HttpOnly") && cookie.includes("SameSite=lax")));
+              if (path.name === "management") assert(setCookieHeaders(response).every((cookie) => cookie.includes("Path=/api/management")));
+              assert.doesNotMatch(await response.text(), /rotated-access|rotated-refresh/);
+            } else {
+              assert.deepEqual(setCookieHeaders(response), []);
+            }
+          }
+          assert.equal(requests.filter((r) => r.pathname === "/api/v1/auth/token/refresh/").length, 1);
+          assert.equal(requests.filter((r) => r.pathname !== "/api/v1/auth/token/refresh/").length, success ? 2 : 0);
+        });
+      }
+    }
+
+    await t.test("all protected BFF error mappers preserve refresh throttling", async () => {
+      const paths = [
+        { url: "/api/cart" },
+        { url: "/api/account/addresses" },
+        { url: "/api/products/vase/reviews/mine" },
+        { url: "/api/orders/51" },
+        { url: "/api/checkout", body: { addressId: 1 } },
+        { url: "/api/management/reviews", management: true },
+        { url: "/api/management/orders", management: true },
+      ];
+      for (const path of paths) {
+        requests = [];
+        responder = () => ({ status: 429, headers: { "Retry-After": "60" } });
+        const cookies = cookieHeader({ [path.management ? "management_refresh" : "store_refresh"]: `throttled-${path.url}` });
+        const response = await fetch(`${baseUrl}${path.url}`, "body" in path
+          ? sameOriginJson(baseUrl, path.body, cookies)
+          : { headers: { Cookie: cookies } });
+        assert.equal(response.status, 429, path.url);
+        assert.equal(response.headers.get("retry-after"), "60");
+        assert.deepEqual(setCookieHeaders(response), []);
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0].pathname, "/api/v1/auth/token/refresh/");
+      }
+    });
+
+    await t.test("session endpoint preserves guest and missing-profile contracts after rotation", async () => {
+      requests = [];
+      const guest = await fetch(`${baseUrl}/api/auth/session`);
+      assert.equal(guest.status, 200);
+      assert.deepEqual(await guest.json(), { authenticated: false, customer: null });
+      assert.equal(requests.length, 0);
+      responder = (request) => request.pathname === "/api/v1/auth/token/refresh/"
+        ? { body: { access: "profileless-access", refresh: "profileless-refresh" } }
+        : request.headers.authorization === "Bearer expired-access"
+          ? { status: 401 }
+          : { status: 404 };
+      const response = await fetch(`${baseUrl}/api/auth/session`, {
+        headers: { Cookie: cookieHeader({ store_access: "expired-access", store_refresh: "profileless-old" }) },
+      });
+      assert.equal(response.status, 403);
+      const body = await response.json();
+      assert.equal(body.authenticated, true);
+      assert.equal(body.customer, null);
+      assert.equal(body.accountState, "missing_profile");
+      assert.equal(cookieValue(response, "store_access"), "profileless-access");
+      assert.equal(cookieValue(response, "store_refresh"), "profileless-refresh");
+    });
+
+    for (const status of [429, 503]) {
+      await t.test(`page proxy stops rendering on refresh ${status}`, async () => {
+        requests = [];
+        responder = () => ({ status, headers: { "Retry-After": "60" } });
+        const response = await fetch(`${baseUrl}/account`, {
+          headers: { Cookie: `store_refresh=page-failure-${status}` },
+          redirect: "manual",
+        });
+        assert.equal(response.status, status);
+        assert.equal(response.headers.get("location"), null);
+        assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+        assert.match(await response.text(), /role="alert"/);
+        assert.deepEqual(setCookieHeaders(response), []);
+        assert.equal(requests.length, 1);
       });
     }
   } finally {

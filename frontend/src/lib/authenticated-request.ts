@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import { type AuthTokens, normalizeToken } from "@/lib/auth-contract";
 import { isAuthenticationFailure } from "@/lib/auth-error-policy";
 import { refreshSession } from "@/lib/auth-refresh";
+import { RefreshFailure } from "@/lib/refresh-failure";
 import {
   ACCESS_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
@@ -60,8 +61,11 @@ export async function withAuthenticatedSession<T>(
   let tokens: AuthTokens;
   try {
     tokens = await refreshSession(refresh, trustedClientIp(await headers()));
-  } catch {
-    throw new AuthSessionError();
+  } catch (error) {
+    if (error instanceof RefreshFailure && error.status === 401) {
+      throw new AuthSessionError();
+    }
+    throw error;
   }
 
   try {

@@ -3,7 +3,7 @@ import "server-only";
 import { AuthApiError } from "@/lib/auth-api";
 import type { AuthTokens } from "@/lib/auth-contract";
 import { classifyAddressApiFailure } from "@/lib/address-error-policy";
-import { clearAuthCookies, privateAuthJson, setAuthCookies } from "@/lib/auth-route";
+import { clearAuthCookies, privateAuthJson, refreshFailureResponse, setAuthCookies } from "@/lib/auth-route";
 import {
   AuthSessionError,
   AuthenticatedOperationError,
@@ -47,6 +47,9 @@ export function addressRouteError(caught: unknown) {
     clearAuthCookies(response);
     return response;
   }
+
+  const refreshFailure = refreshFailureResponse(error);
+  if (refreshFailure) return refreshFailure;
 
   let response;
   const failure =

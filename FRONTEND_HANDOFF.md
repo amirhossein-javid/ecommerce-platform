@@ -246,10 +246,25 @@ provide that BFF boundary.
 
 Refresh rotation is single-use. Concurrent server renders or route handlers
 must not independently refresh the same token: coalesce/serialize refresh for a
-browser session and replace both cookies atomically after success. On refresh
-failure, clear the local session and require login. On logout, submit the stored
-refresh token to Django, then clear both cookies even if the remote token is
-already invalid.
+browser session and replace both cookies atomically after success. Only a JWT
+refresh endpoint `401` definitively rejects credentials and clears that session's
+cookies. Refresh `429` preserves cookies and returns `429`, forwarding only a
+valid seconds/canonical HTTP-date `Retry-After`. Refresh `5xx`, unexpected statuses,
+malformed success bodies, network failures, and the 10-second refresh timeout
+preserve cookies and return a safe `503`. No protected operation resumes without
+verified replacement tokens. The customer page proxy stops rendering on these
+temporary failures instead of rendering the user as a guest; management and
+customer BFF routes share this classification but retain separate cookies.
+
+No failed refresh is automatically retried within a request. Existing in-process
+coordination shares pending results and retains completed results for five seconds,
+including failures. A lost response can mean the old refresh token was already
+blacklisted: preserving its cookie cannot recover the missing replacement. A later
+independent request may receive `401` and require login. The BFF neither assumes
+rotation succeeded nor replays the protected operation after an ambiguous failure.
+Coordination remains local to one process; multiple workers need shared refresh
+coordination before deployment. On logout, submit the stored refresh token to
+Django, then clear both cookies even if the remote token is already invalid.
 
 Registration should redirect to login or invoke the login flow explicitly; a
 successful registration response contains no JWTs.

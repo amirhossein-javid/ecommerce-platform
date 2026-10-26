@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { AuthTokens } from "@/lib/auth-contract";
-import { clearAuthCookies, setAuthCookies } from "@/lib/auth-route";
+import { clearAuthCookies, refreshFailureResponse, setAuthCookies } from "@/lib/auth-route";
 import {
   AuthSessionError,
   AuthenticatedOperationError,
@@ -38,6 +38,9 @@ export function checkoutRouteError(caught: unknown) {
     clearAuthCookies(response);
     return response;
   }
+
+  const refreshFailure = refreshFailureResponse(error);
+  if (refreshFailure) return refreshFailure;
 
   const failure =
     error instanceof CheckoutApiError
