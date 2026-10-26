@@ -20,7 +20,7 @@ COPY --chown=node:node package.json package-lock.json ./
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
 RUN mkdir -p .next \
-    && chown node:node .next
+    && chown node:node /app .next
 
 USER node
 
