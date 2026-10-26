@@ -486,6 +486,60 @@ test("Next.js BFF route integration", { timeout: 180_000 }, async (t) => {
       assert.equal(dashboard.status, 200);
       assert.equal((await dashboard.json()).order_count, 1);
     });
+
+    const retryDate = new Date("2037-10-21T07:28:00Z").toUTCString();
+    const invalidCredentials = "ایمیل یا رمز عبور صحیح نیست.";
+    const rateLimited = "تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.";
+    const serviceUnavailable = "ارتباط با سرویس حساب کاربری برقرار نشد.";
+    const failureCases: Array<{
+      name: string;
+      reply: BackendReply;
+      expectedStatus: number;
+      expectedMessage: string;
+      expectedRetryAfter?: string;
+    }> = [
+      { name: "invalid credentials (400)", reply: { status: 400 }, expectedStatus: 401, expectedMessage: invalidCredentials },
+      { name: "invalid credentials (401)", reply: { status: 401 }, expectedStatus: 401, expectedMessage: invalidCredentials },
+      { name: "rate limit with seconds", reply: { status: 429, headers: { "Retry-After": "60" } }, expectedStatus: 429, expectedMessage: rateLimited, expectedRetryAfter: "60" },
+      { name: "rate limit with HTTP date", reply: { status: 429, headers: { "Retry-After": retryDate } }, expectedStatus: 429, expectedMessage: rateLimited, expectedRetryAfter: retryDate },
+      { name: "rate limit without Retry-After", reply: { status: 429 }, expectedStatus: 429, expectedMessage: rateLimited },
+      { name: "rate limit with invalid Retry-After", reply: { status: 429, headers: { "Retry-After": "private-backend-detail" } }, expectedStatus: 429, expectedMessage: rateLimited },
+      { name: "rate limit with invalid date", reply: { status: 429, headers: { "Retry-After": "Invalid Date" } }, expectedStatus: 429, expectedMessage: rateLimited },
+      { name: "upstream 500", reply: { status: 500 }, expectedStatus: 503, expectedMessage: serviceUnavailable },
+      { name: "upstream 503", reply: { status: 503 }, expectedStatus: 503, expectedMessage: serviceUnavailable },
+      { name: "network disconnect", reply: { disconnect: true }, expectedStatus: 503, expectedMessage: serviceUnavailable },
+    ];
+
+    for (const scenario of failureCases) {
+      await t.test(`management login safely maps ${scenario.name}`, async () => {
+        requests = [];
+        responder = () => ({
+          ...scenario.reply,
+          body: {
+            detail: "private-backend-detail",
+            access: "unexposed-access",
+            refresh: "unexposed-refresh",
+          },
+        });
+
+        const response = await fetch(
+          `${baseUrl}/api/management/auth/login`,
+          sameOriginJson(baseUrl, {
+            email: "operator@example.com",
+            password: "incorrect-password",
+          }),
+        );
+
+        assert.equal(response.status, scenario.expectedStatus);
+        assert.equal(response.headers.get("retry-after"), scenario.expectedRetryAfter ?? null);
+        assert.deepEqual(await response.json(), { error: scenario.expectedMessage });
+        assert.deepEqual(setCookieHeaders(response), []);
+        assert.match(response.headers.get("cache-control") ?? "", /private/);
+        assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+        assert(requests.length > 0);
+        assert(requests.every((request) => request.pathname === "/api/v1/auth/login/"));
+      });
+    }
   } finally {
     next.kill("SIGTERM");
     await Promise.race([

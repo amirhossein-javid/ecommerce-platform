@@ -1,5 +1,6 @@
 import { loginCustomer, logoutCustomer } from "@/lib/auth-api";
 import { parseLoginInput } from "@/lib/auth-contract";
+import { authRouteError } from "@/lib/auth-route";
 import {
   privateManagementJson,
   setManagementCookies,
@@ -76,7 +77,17 @@ export async function POST(request: Request) {
     const response = privateManagementJson({ authenticated: true });
     setManagementCookies(response, tokens);
     return response;
-  } catch {
-    return privateManagementJson({ error: "ایمیل یا رمز عبور صحیح نیست." }, 401);
+  } catch (error) {
+    const response = authRouteError(error, "login");
+    const retryAfter = response.headers.get("Retry-After");
+    if (
+      retryAfter &&
+      !/^\d+$/.test(retryAfter) &&
+      (Number.isNaN(Date.parse(retryAfter)) ||
+        new Date(retryAfter).toUTCString() !== retryAfter)
+    ) {
+      response.headers.delete("Retry-After");
+    }
+    return response;
   }
 }
