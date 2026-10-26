@@ -215,6 +215,46 @@ test("Next.js BFF route integration", { timeout: 300_000 }, async (t) => {
   try {
     await waitForNext(baseUrl, next, () => nextLogs);
 
+    await t.test("order pages retain one main landmark, the skip target, and RTL", async () => {
+      for (const scenario of [
+        { path: "/account/orders", empty: false, content: "مشاهدهٔ جزئیات سفارش" },
+        { path: "/account/orders", empty: true, content: "هنوز سفارشی ندارید" },
+        { path: "/account/orders/41", empty: false, content: "کالاهای سفارش" },
+      ]) {
+        responder = (request) => {
+          if (request.pathname === "/api/v1/account/profile/") return { body: CUSTOMER };
+          if (request.pathname === "/api/v1/orders/") {
+            return { body: {
+              count: scenario.empty ? 0 : 21,
+              next: scenario.empty ? null : "http://backend.test/api/v1/orders/?page=2",
+              previous: null,
+              results: scenario.empty ? [] : [{ ...order(41, "PAID"), updated_at: NOW }],
+            } };
+          }
+          if (request.pathname === "/api/v1/orders/41/") return { body: order(41, "PAID") };
+          return { status: 404 };
+        };
+        const response = await fetch(`${baseUrl}${scenario.path}`, {
+          headers: { Cookie: "store_access=order-page-access" },
+        });
+        assert.equal(response.status, 200);
+        const html = await response.text();
+        assert.equal((html.match(/<main\b/g) ?? []).length, 1, scenario.path);
+        assert.equal((html.match(/<\/main>/g) ?? []).length, 1, scenario.path);
+        assert.match(html, /<main id="main-content"/);
+        assert.match(html, /href="#main-content"/);
+        assert.match(html, /<html lang="fa" dir="rtl"/);
+        assert.match(html, /<div class="min-w-0(?: space-y-6)?">/);
+        assert(html.includes(scenario.content), scenario.path);
+        if (scenario.path.endsWith("/41")) {
+          assert.match(html, /aria-labelledby="order-items-title"/);
+        } else if (!scenario.empty) {
+          assert.match(html, /aria-label="صفحه‌بندی سفارش‌ها"/);
+          assert.match(html, /href="\/account\/orders\?page=2"/);
+        }
+      }
+    });
+
     await t.test("login cookies, refresh rotation, and logout use real handlers", async () => {
       requests = [];
       responder = (request) => {
