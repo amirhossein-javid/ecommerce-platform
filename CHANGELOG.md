@@ -7,7 +7,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-17
+## [1.0.0]
 
 This is the first source release of the Naghsh-e Jahan ecommerce platform. It
 has been validated locally but has not yet been deployed to a public production
@@ -56,12 +56,14 @@ environment.
 - Added Python production/development vulnerability audits and separate npm
   runtime/development audits to CI. Production `npm audit --omit=dev` reports
   zero vulnerabilities.
-- Temporarily accepted `GHSA-vfj7-8cjw-p6xm` as a development-only npm risk.
-  The affected chain is `eslint-config-next` -> `@next/eslint-plugin-next` ->
-  `fast-glob` -> `micromatch` -> `braces`. No compatible patched release was
-  available at the time of review without an incompatible Next.js downgrade.
-  CI accepts only this exact chain and must fail for any unrelated, changed, or
-  newly introduced advisory.
+- Upgraded Next.js and `eslint-config-next` from `16.3.8` to `16.4.3` to address
+  newly published runtime advisories, and resolved development-only Zod from
+  `4.6.5` to `4.6.7`. Current local runtime and full npm audits report zero
+  vulnerabilities.
+- Removed the temporary CI exception for `GHSA-vfj7-8cjw-p6xm` after the
+  advisory was withdrawn and disappeared from npm audit results. CI now fails
+  directly on any High or Critical npm advisory and retains the all-severity
+  production runtime audit.
 
 ### Validation
 
@@ -74,9 +76,18 @@ environment.
   the npm production audit, and backend/frontend production Docker image builds
   passed locally.
 - GitHub Actions is configured to repeat these release gates on pushes to
-  `main` and pull requests targeting `main`. No successful GitHub-hosted run is
-  claimed by this release documentation because no run evidence was available
-  during the review.
+  `main` and pull requests targeting `main`. A GitHub-hosted run completed
+  successfully on October 19, 2026, for commit
+  `62e35db7175981948d5f3c3b6f40252d0723d1fc`, including the backend, frontend,
+  dependency-audit, and production-image jobs. No successful GitHub-hosted run
+  is claimed yet for the later dependency-remediation changes.
+- Browser QA against the local production frontend and real
+  Django/PostgreSQL stack covered 360, 390, 768, and 1440 px without a confirmed
+  P0 or P1 finding. Known non-blocking P2 findings are nested `main` landmarks
+  on customer order pages, incomplete backward focus wrapping in the mobile
+  filter dialog, and focus not returning to the mobile-menu trigger after
+  Escape. This does not claim exhaustive WCAG, assistive-technology, or
+  cross-browser certification.
 
 ### Not yet production-verified
 
@@ -86,9 +97,6 @@ environment.
 - Live Bale payment success, provider inquiry, webhook delivery/replay, and the
   full Mini App return flow have not been verified against the real provider.
   No real payment is claimed to have been completed.
-- Browser-based visual validation of RTL presentation and responsive layouts at
-  360 px, 390 px, and desktop widths has not been completed. A browser-based
-  accessibility audit has also not been completed.
 - Durable production media storage, real production secrets, and capacity
   sizing depend on the selected hosting environment.
 

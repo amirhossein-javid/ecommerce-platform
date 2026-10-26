@@ -141,26 +141,32 @@ locks, and both production Docker image builds also passed locally.
 
 The GitHub Actions workflow is configured to repeat the backend, frontend,
 dependency-audit, and production-image gates for pushes and pull requests to
-`main`. This documentation does not claim a successful GitHub-hosted run;
-actual workflow evidence must be checked after the changes are pushed.
+`main`. A GitHub-hosted run completed successfully on October 19, 2026, for
+commit `62e35db7175981948d5f3c3b6f40252d0723d1fc`, including the backend,
+frontend, dependency-audit, and production-image jobs. Dependency remediation
+performed after that run upgraded Next.js and `eslint-config-next` to `16.4.3`
+and resolved development-only Zod to `4.6.7`; current local runtime and full
+npm audits report zero vulnerabilities. A new GitHub-hosted run for these
+uncommitted changes is not claimed and remains a release gate.
 
-The full npm development audit currently reports five High findings representing
-one transitive, development-only advisory, `GHSA-vfj7-8cjw-p6xm`, through
-`eslint-config-next` -> `@next/eslint-plugin-next` -> `fast-glob` ->
-`micromatch` -> `braces`. The production audit reports zero vulnerabilities,
-and no compatible patched release was available at the time of review without
-an incompatible Next.js downgrade. CI narrowly accepts only this exact known
-chain and continues to fail for unrelated, changed, or newly introduced npm
-advisories.
+The previously accepted development-only `GHSA-vfj7-8cjw-p6xm` advisory for
+`braces` was withdrawn on October 23, 2026, and is no longer reported by npm.
+Its CI exception has therefore been removed. CI now fails directly on any High
+or Critical npm advisory while retaining the stricter all-severity production
+runtime audit.
 
 The application has not yet been publicly deployed. Live Bale payment success,
 provider inquiry, webhook delivery/replay, and the Mini App return flow have not
-been verified against the real provider. Browser-based visual checks of RTL and
-responsive layouts at 360 px, 390 px, and desktop widths, and a browser-based
-accessibility audit, have not been completed. These are release/deployment
-acceptance gaps, not claims of completed verification. Remaining launch work is
-listed in `DEPLOYMENT_VPS.md`; deferred product work remains outside the v1.0.0
-scope described in `FRONTEND_HANDOFF.md` and `CHANGELOG.md`.
+been verified against the real provider. Browser QA against the local production
+frontend and real Django/PostgreSQL stack covered RTL and responsive layouts at
+360, 390, 768, and 1440 px with no confirmed P0 or P1 finding. Three
+non-blocking P2 accessibility findings remain: nested `main` landmarks on
+customer order pages, incomplete backward focus wrapping in the mobile filter
+dialog, and focus not returning to the mobile-menu trigger after Escape. This
+was not a claim of exhaustive WCAG, assistive-technology, or cross-browser
+certification. Remaining public launch work is listed in `DEPLOYMENT_VPS.md`;
+deferred product work remains outside the v1.0.0 source-release scope described
+in `FRONTEND_HANDOFF.md` and `CHANGELOG.md`.
 
 ## Production settings and security
 

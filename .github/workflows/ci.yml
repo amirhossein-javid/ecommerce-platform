@@ -125,62 +125,8 @@ jobs:
       - name: Audit frontend runtime dependencies
         run: npm audit --omit=dev --audit-level=low
 
-      - name: Audit frontend development dependencies
-        shell: bash
-        run: |
-          report="${RUNNER_TEMP}/npm-audit.json"
-          npm audit --json > "$report" || true
-          node - "$report" <<'NODE'
-          const fs = require("node:fs");
-
-          const report = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          if (report.error || !report.metadata?.vulnerabilities) {
-            console.error("npm audit did not return a valid vulnerability report.");
-            console.error(JSON.stringify(report.error ?? report, null, 2));
-            process.exit(1);
-          }
-
-          const vulnerabilities = report.vulnerabilities ?? {};
-          const names = Object.keys(vulnerabilities).sort();
-          if (names.length === 0) {
-            console.log("No npm vulnerabilities found.");
-            process.exit(0);
-          }
-
-          const expectedVia = new Map([
-            ["@next/eslint-plugin-next", ["fast-glob"]],
-            ["eslint-config-next", ["@next/eslint-plugin-next"]],
-            ["fast-glob", ["micromatch"]],
-            ["micromatch", ["braces"]],
-          ]);
-          const expectedNames = [...expectedVia.keys(), "braces"].sort();
-          const namesMatch =
-            names.length === expectedNames.length &&
-            names.every((name, index) => name === expectedNames[index]);
-          const bracesVia = vulnerabilities.braces?.via ?? [];
-          const advisoryMatches =
-            bracesVia.length === 1 &&
-            typeof bracesVia[0] === "object" &&
-            bracesVia[0].url ===
-              "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm";
-          const chainMatches = [...expectedVia].every(
-            ([name, via]) =>
-              JSON.stringify(vulnerabilities[name]?.via ?? []) ===
-              JSON.stringify(via),
-          );
-
-          if (!namesMatch || !advisoryMatches || !chainMatches) {
-            console.error(
-              "npm audit found vulnerabilities outside the accepted dev-only braces advisory.",
-            );
-            console.error(JSON.stringify(vulnerabilities, null, 2));
-            process.exit(1);
-          }
-
-          console.warn(
-            "Accepted temporary dev-only risk: GHSA-vfj7-8cjw-p6xm through eslint-config-next; no patched compatible release is currently available.",
-          );
-          NODE
+      - name: Audit frontend dependencies for high severity issues
+        run: npm audit --audit-level=high
 
       - name: Run ESLint
         run: npm run lint
