@@ -1,14 +1,27 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
+from threading import Event
 
 import pytest
 from django.contrib import admin
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection, connections
+from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import CustomerProfile, User
-from apps.orders.models import InventoryReservation, Order
+from apps.orders.lifecycle import cancel_order
+from apps.orders.models import (
+    InventoryReservation,
+    Order,
+    OrderItem,
+    OrderStatusHistory,
+)
+from apps.payments.gateways import PaymentVerification, VerificationStatus
+from apps.payments.models import PaymentAttempt
+from apps.payments.services import finalize_verified_payment
 from apps.products.admin import CategoryAdmin, ProductAdmin, ProductImageInline
 from apps.products.models import Category, Product, ProductImage
 
@@ -83,6 +96,18 @@ def create_image(product, position, *, is_primary=False, alt_text=""):
         position=position,
         is_primary=is_primary,
     )
+
+
+def product_changelist_data(product):
+    return {
+        "form-TOTAL_FORMS": 1,
+        "form-INITIAL_FORMS": 1,
+        "form-MIN_NUM_FORMS": 0,
+        "form-MAX_NUM_FORMS": 1000,
+        "form-0-id": product.pk,
+        "form-0-status": Product.Status.ARCHIVED,
+        "_save": "Save",
+    }
 
 
 def test_category_and_product_use_custom_admins_with_product_image_inline():
@@ -324,3 +349,161 @@ def test_admin_cannot_reduce_stock_below_active_reservations(
     )
     product.refresh_from_db()
     assert product.stock_quantity == 10
+
+
+@pytest.mark.django_db
+def test_product_changelist_changes_status_without_accepting_stock(
+    client, superuser, product
+):
+    client.force_login(superuser)
+    original_stock = product.stock_quantity
+    original_updated_at = product.updated_at
+    data = product_changelist_data(product)
+    data["form-0-stock_quantity"] = 999
+
+    response = client.post(reverse("admin:products_product_changelist"), data)
+
+    assert response.status_code == 302
+    product.refresh_from_db()
+    assert product.status == Product.Status.ARCHIVED
+    assert product.stock_quantity == original_stock
+    assert product.updated_at > original_updated_at
+
+
+@pytest.mark.django_db
+def test_product_change_form_preserves_status_and_explicit_stock_management(
+    client, superuser, product
+):
+    client.force_login(superuser)
+    data = product_form_data(product, [])
+    data.update(status=Product.Status.ACTIVE, stock_quantity=12)
+
+    response = client.post(
+        reverse("admin:products_product_change", args=(product.pk,)), data
+    )
+
+    assert response.status_code == 302
+    product.refresh_from_db()
+    assert product.status == Product.Status.ACTIVE
+    assert product.stock_quantity == 12
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("inventory_operation", ("payment", "cancellation"))
+def test_product_changelist_preserves_concurrent_inventory_commit(
+    superuser, product, monkeypatch, inventory_operation
+):
+    product.status = Product.Status.ACTIVE
+    product.stock_quantity = 10
+    product.save(update_fields=("status", "stock_quantity"))
+    customer = CustomerProfile.objects.create(
+        user=User.objects.create_user("inventory-race@example.com")
+    )
+    order = Order.objects.create(
+        customer=customer, subtotal=product.price, grand_total=product.price
+    )
+    OrderItem.objects.create(
+        order=order,
+        product=product,
+        product_name=product.name,
+        sku=product.sku,
+        unit_price=product.price,
+        quantity=1,
+        line_total=product.price,
+    )
+    reservation = InventoryReservation.objects.create(
+        order=order,
+        product=product,
+        quantity=1,
+        expires_at=timezone.now() + timedelta(minutes=15),
+    )
+    attempt = PaymentAttempt.objects.create(
+        order=order, amount=order.grand_total, gateway="test", gateway_reference="race"
+    )
+    verification = PaymentVerification(
+        status=VerificationStatus.SUCCESS,
+        gateway_reference=attempt.gateway_reference,
+        amount=attempt.amount,
+        currency=attempt.currency,
+    )
+    if inventory_operation == "cancellation":
+        finalize_verified_payment(attempt=attempt, verification=verification)
+        product.refresh_from_db()
+
+    original_stock = product.stock_quantity
+    loaded = Event()
+    resume_save = Event()
+    worker_state = {}
+    product_admin = admin.site._registry[Product]
+    save_model = product_admin.save_model
+
+    def pause_before_save(request, obj, form, change):
+        # Only control scheduling: the request, database, and domain services are real.
+        worker_state["stock"] = obj.stock_quantity
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_backend_pid()")
+            worker_state["pid"] = cursor.fetchone()[0]
+        loaded.set()
+        assert resume_save.wait(timeout=10)
+        return save_model(request, obj, form, change)
+
+    monkeypatch.setattr(product_admin, "save_model", pause_before_save)
+
+    def edit_status():
+        try:
+            client = Client()
+            client.force_login(User.objects.get(pk=superuser.pk))
+            return client.post(
+                reverse("admin:products_product_changelist"),
+                product_changelist_data(product),
+            ).status_code
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(edit_status)
+        try:
+            assert loaded.wait(timeout=10)
+            assert worker_state["stock"] == original_stock
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_backend_pid()")
+                assert cursor.fetchone()[0] != worker_state["pid"]
+            if inventory_operation == "payment":
+                finalize_verified_payment(attempt=attempt, verification=verification)
+                expected_stock = 9
+            else:
+                result = cancel_order(
+                    order=order,
+                    actor_type=OrderStatusHistory.ActorType.OPERATOR,
+                    actor_user=superuser,
+                )
+                assert result.changed is True
+                expected_stock = 10
+            # The inventory transaction must commit before the stale Admin save.
+            assert Product.objects.get(pk=product.pk).stock_quantity == expected_stock
+        finally:
+            resume_save.set()
+        assert future.result(timeout=10) == 302
+
+    product.refresh_from_db()
+    order.refresh_from_db()
+    reservation.refresh_from_db()
+    attempt.refresh_from_db()
+    assert product.status == Product.Status.ARCHIVED
+    assert product.stock_quantity == expected_stock
+    assert attempt.status == PaymentAttempt.Status.SUCCESS
+    assert reservation.status == InventoryReservation.Status.CONSUMED
+    if inventory_operation == "payment":
+        assert order.status == Order.Status.PAID
+        assert order.refund_status == Order.RefundStatus.NOT_REQUIRED
+    else:
+        assert order.status == Order.Status.CANCELLED
+        assert order.refund_status == Order.RefundStatus.REQUIRED
+        replay = cancel_order(
+            order=order,
+            actor_type=OrderStatusHistory.ActorType.OPERATOR,
+            actor_user=superuser,
+        )
+        assert replay.changed is False
+        product.refresh_from_db()
+        assert product.stock_quantity == expected_stock
