@@ -349,6 +349,12 @@ class ManagementOrderTransitionView(OrderManagementMixin, APIView):
     @extend_schema(
         request=ManagementOrderTransitionSerializer,
         responses={status.HTTP_200_OK: ManagementOrderDetailSerializer},
+        description=(
+            "Apply an operator transition. A retry succeeds only while the order "
+            "remains at the requested status and its latest history records the "
+            "same transition by the same operator. Different actors and stale "
+            "retries after a subsequent transition receive 409."
+        ),
         tags=["Order Management"],
     )
     def post(self, request, pk):
@@ -366,7 +372,6 @@ class ManagementOrderTransitionView(OrderManagementMixin, APIView):
             else:
                 result = transition_order(
                     order=order,
-                    from_status=order.status,
                     to_status=target_status,
                     actor_type=OrderStatusHistory.ActorType.OPERATOR,
                     actor_user=request.user,

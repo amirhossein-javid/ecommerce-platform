@@ -84,15 +84,25 @@ _STATUS_TIMESTAMP_FIELDS = {
 def transition_order(
     *,
     order,
-    from_status,
+    from_status=None,
     to_status,
     actor_type,
     actor_user,
     at=None,
 ):
-    """Run one customer/operator lifecycle command against fresh locked state."""
-    source_status = _normalize_status(from_status)
+    """Run a locked command; infer an omitted source only for a unique edge."""
     target_status = _normalize_status(to_status)
+    if from_status is None:
+        sources = [
+            source
+            for source, targets in ALLOWED_TRANSITIONS.items()
+            if target_status in targets
+        ]
+        if len(sources) != 1:
+            raise InvalidOrderTransition("The transition requires an explicit source.")
+        source_status = sources[0]
+    else:
+        source_status = _normalize_status(from_status)
     if target_status == Order.Status.CANCELLED:
         if target_status not in ALLOWED_TRANSITIONS[source_status]:
             raise InvalidOrderTransition(
@@ -488,13 +498,13 @@ def _matching_transition_exists(
     actor_type,
     actor_user,
 ):
-    return OrderStatusHistory.objects.filter(
-        order=order,
-        from_status=from_status,
-        to_status=to_status,
-        actor_type=actor_type,
-        actor_user=actor_user,
-    ).exists()
+    latest = OrderStatusHistory.objects.filter(order=order).order_by("-pk").first()
+    return latest is not None and (
+        latest.from_status == from_status
+        and latest.to_status == to_status
+        and latest.actor_type == actor_type
+        and latest.actor_user_id == actor_user.pk
+    )
 
 
 def _normalize_status(status):
