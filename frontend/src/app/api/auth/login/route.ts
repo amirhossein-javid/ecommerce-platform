@@ -27,6 +27,7 @@ import {
 } from "@/lib/cart-security";
 import { clearGuestCartCookie } from "@/lib/cart-route";
 import { verifyStorefrontCustomer } from "@/lib/customer-login-policy";
+import { trustedClientIp } from "@/lib/client-identity";
 
 function profileVerificationError(error: unknown) {
   let response;
@@ -74,12 +75,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const tokens = await loginCustomer(input.email, input.password);
+    const clientIp = trustedClientIp(request.headers);
+    const tokens = await loginCustomer(input.email, input.password, clientIp);
     try {
       await verifyStorefrontCustomer(
         tokens,
         fetchCustomerProfile,
-        logoutCustomer,
+        (refresh) => logoutCustomer(refresh, clientIp),
       );
     } catch (error) {
       return profileVerificationError(error);
@@ -107,7 +109,7 @@ export async function POST(request: Request) {
           );
           if (!decision.establishSession) {
             try {
-              await logoutCustomer(tokens.refresh);
+              await logoutCustomer(tokens.refresh, clientIp);
             } catch {
               // Tokens are never exposed if best-effort revocation is unavailable.
             }

@@ -7,6 +7,7 @@ import { parseProfileUpdateInput } from "@/lib/auth-contract";
 import {
   clearAuthCookies,
   privateAuthJson,
+  refreshFailureResponse,
   setAuthCookies,
 } from "@/lib/auth-route";
 import {
@@ -37,6 +38,9 @@ function profileError(error: unknown) {
     clearAuthCookies(response);
     return response;
   }
+
+  const refreshFailure = refreshFailureResponse(originalError);
+  if (refreshFailure) return refreshFailure;
 
   let response;
   if (originalError instanceof AuthApiError && originalError.status === 400) {

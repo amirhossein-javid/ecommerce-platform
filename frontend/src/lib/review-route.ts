@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { AuthTokens } from "@/lib/auth-contract";
-import { clearAuthCookies, setAuthCookies } from "@/lib/auth-route";
+import { clearAuthCookies, refreshFailureResponse, setAuthCookies } from "@/lib/auth-route";
 import {
   AuthSessionError,
   AuthenticatedOperationError,
@@ -35,6 +35,9 @@ export function reviewRouteError(caught: unknown, operation: "get" | "create" | 
     clearAuthCookies(response);
     return response;
   }
+
+  const refreshFailure = refreshFailureResponse(error);
+  if (refreshFailure) return refreshFailure;
 
   let response;
   if (error instanceof ReviewApiError && error.status === 404 && operation === "get") {

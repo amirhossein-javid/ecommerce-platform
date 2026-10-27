@@ -37,9 +37,9 @@ The executable Next.js implementation includes:
   merge during login;
 - authenticated checkout and a result page for the newly created order;
 - payment initiation, allowlisted generic URL handoff, Bale invoice handoff,
-  generic return verification, and authoritative order-status refresh; and
+  generic return verification, and authoritative order-status refresh;
 - customer order history with item snapshots, pagination, owned order detail,
-  and payment resumption for backend-eligible pending orders.
+  and payment resumption for backend-eligible pending orders; and
 - approved product-review listing and aggregates, plus authenticated review
   submission, own-status display, and confirmed deletion on product detail.
 
@@ -246,10 +246,25 @@ provide that BFF boundary.
 
 Refresh rotation is single-use. Concurrent server renders or route handlers
 must not independently refresh the same token: coalesce/serialize refresh for a
-browser session and replace both cookies atomically after success. On refresh
-failure, clear the local session and require login. On logout, submit the stored
-refresh token to Django, then clear both cookies even if the remote token is
-already invalid.
+browser session and replace both cookies atomically after success. Only a JWT
+refresh endpoint `401` definitively rejects credentials and clears that session's
+cookies. Refresh `429` preserves cookies and returns `429`, forwarding only a
+valid seconds/canonical HTTP-date `Retry-After`. Refresh `5xx`, unexpected statuses,
+malformed success bodies, network failures, and the 10-second refresh timeout
+preserve cookies and return a safe `503`. No protected operation resumes without
+verified replacement tokens. The customer page proxy stops rendering on these
+temporary failures instead of rendering the user as a guest; management and
+customer BFF routes share this classification but retain separate cookies.
+
+No failed refresh is automatically retried within a request. Existing in-process
+coordination shares pending results and retains completed results for five seconds,
+including failures. A lost response can mean the old refresh token was already
+blacklisted: preserving its cookie cannot recover the missing replacement. A later
+independent request may receive `401` and require login. The BFF neither assumes
+rotation succeeded nor replays the protected operation after an ambiguous failure.
+Coordination remains local to one process; multiple workers need shared refresh
+coordination before deployment. On logout, submit the stored refresh token to
+Django, then clear both cookies even if the remote token is already invalid.
 
 Registration should redirect to login or invoke the login flow explicitly; a
 successful registration response contains no JWTs.
@@ -314,7 +329,8 @@ locally calculated total in favor of the response.
   shipping snapshot, status, and creation/update timestamps.
 - `POST /api/v1/orders/{id}/cancel/` takes no body and returns `id`, `status`,
   `refund_status`, and `cancelled_at`. It is available only for states the
-  backend allows and returns `409` for a rejected transition.
+  backend allows and returns `409` for a rejected transition. This is an
+  API capability; the current storefront has no customer cancellation control.
 
 Order status values are `PENDING_PAYMENT`, `PAID`, `PROCESSING`, `SHIPPED`,
 `DELIVERED`, `CANCELLED`, and `EXPIRED`. The frontend must render these values;
@@ -391,7 +407,11 @@ and product-review flows.
   JavaScript-readable cookies.
 - Preserve CSRF/origin protection on cookie-authenticated BFF mutations.
 - Serialize rotating refresh-token use and update cookies atomically.
-- Forward only the Bearer token and, for guest cart calls, `X-Cart-Token`.
+- Forward the Bearer token and, for guest cart calls, `X-Cart-Token`. The
+  production BFF also carries the ingress-written, validated
+  `X-Naghsh-Client-IP` only to the Docker-internal Caddy listener so Django can
+  enforce per-client anonymous throttles; browser-provided forwarding headers
+  are never trusted.
 - Merge the guest cart explicitly after login and clear its cookie only after
   the merge outcome is handled.
 - Treat all client payment return data as untrusted and poll Django order state
@@ -410,10 +430,12 @@ and product-review flows.
   browser checkout URL. If payments must launch outside Bale, treat that as a
   new provider/product requirement rather than deriving a URL from the opaque
   identifier.
-- Select durable shared media storage or a persistent media route and ensure
-  serialized image URLs use a public origin.
+- Preserve the single-VPS `media_data` volume and public media route in
+  production Compose. Other topologies need an explicit durable storage/public
+  origin decision; multi-host media sharing is not implemented.
 - Configure trusted proxy/host/origin settings and TLS according to the
-  production deployment contract in `README.md`.
+  production contracts in [OPERATIONS.md](OPERATIONS.md) and
+  [DEPLOYMENT_VPS.md](DEPLOYMENT_VPS.md).
 - Add a shared throttle cache or ingress enforcement before multiple workers or
   replicas are used.
 

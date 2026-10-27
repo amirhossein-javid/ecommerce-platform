@@ -193,6 +193,14 @@ class ProductAdmin(admin.ModelAdmin):
     list_per_page = 50
     save_on_top = True
 
+    def save_model(self, request, obj, form, change):
+        if change and "stock_quantity" not in form.fields:
+            # Changelist forms hold unlocked snapshots. Never write inventory
+            # (or other omitted fields) back from that potentially stale instance.
+            obj.save(update_fields=(*form.changed_data, "updated_at"))
+            return
+        super().save_model(request, obj, form, change)
+
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         with transaction.atomic():
             if request.method == "POST" and object_id is not None:

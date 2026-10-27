@@ -1,5 +1,6 @@
 import { loginCustomer, logoutCustomer } from "@/lib/auth-api";
 import { parseLoginInput } from "@/lib/auth-contract";
+import { authRouteError } from "@/lib/auth-route";
 import {
   privateManagementJson,
   setManagementCookies,
@@ -16,6 +17,7 @@ import {
   hasJsonContentType,
   isTrustedMutationRequest,
 } from "@/lib/cart-security";
+import { trustedClientIp } from "@/lib/client-identity";
 
 export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request.url, request.headers)) {
@@ -37,7 +39,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const tokens = await loginCustomer(input.email, input.password);
+    const clientIp = trustedClientIp(request.headers);
+    const tokens = await loginCustomer(input.email, input.password, clientIp);
     let accessGranted = false;
     let accessCheckUnavailable = false;
     try {
@@ -56,7 +59,7 @@ export async function POST(request: Request) {
     }
     if (!accessGranted) {
       try {
-        await logoutCustomer(tokens.refresh);
+        await logoutCustomer(tokens.refresh, clientIp);
       } catch {
         // The unexposed refresh token is revoked on a best-effort basis.
       }
@@ -74,7 +77,17 @@ export async function POST(request: Request) {
     const response = privateManagementJson({ authenticated: true });
     setManagementCookies(response, tokens);
     return response;
-  } catch {
-    return privateManagementJson({ error: "ایمیل یا رمز عبور صحیح نیست." }, 401);
+  } catch (error) {
+    const response = authRouteError(error, "login");
+    const retryAfter = response.headers.get("Retry-After");
+    if (
+      retryAfter &&
+      !/^\d+$/.test(retryAfter) &&
+      (Number.isNaN(Date.parse(retryAfter)) ||
+        new Date(retryAfter).toUTCString() !== retryAfter)
+    ) {
+      response.headers.delete("Retry-After");
+    }
+    return response;
   }
 }

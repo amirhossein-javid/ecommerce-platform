@@ -1,5 +1,7 @@
 import "server-only";
 
+import { refreshFailureResponse } from "@/lib/auth-route";
+
 import {
   clearManagementCookies,
   privateManagementJson,
@@ -35,6 +37,9 @@ export function managementRouteError(error: unknown) {
     clearManagementCookies(response);
     return response;
   }
+
+  const refreshFailure = refreshFailureResponse(original);
+  if (refreshFailure) return refreshFailure;
 
   let response;
   const isManagementApiError =

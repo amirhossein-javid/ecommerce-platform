@@ -60,7 +60,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
       <div className="grid min-w-0 gap-7 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-10">
         <AccountSidebar customer={session.customer} active="orders" />
-        <main className="min-w-0 space-y-6">
+        <div className="min-w-0 space-y-6">
           <section className="rounded-[1.5rem] border border-gold/40 bg-surface p-5 shadow-card sm:p-7" aria-labelledby="order-items-title">
             <h2 id="order-items-title" className="text-xl font-black text-foreground">کالاهای سفارش</h2>
             <div className="mt-4 divide-y divide-gold/30 border-y border-gold/30">
@@ -96,7 +96,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               <PaymentPanel orderId={order.id} initialOrderStatus={order.status} />
             </aside>
           </div>
-        </main>
+        </div>
       </div>
     </Container>
   );

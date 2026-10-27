@@ -105,6 +105,43 @@ npm run dev
 
 در این حالت مقدار نمونهٔ `DJANGO_API_URL=http://localhost:8000` مناسب است.
 
+## کانتینر production
+
+مرحلهٔ نهایی `Dockerfile` یک خروجی standalone بهینهٔ Next.js می‌سازد، فقط
+فایل‌های runtime را در image نهایی نگه می‌دارد و سرور را با کاربر غیر-root
+`node` اجرا می‌کند. نصب dependencyها با `npm ci` و `package-lock.json` انجام
+می‌شود:
+
+```bash
+docker build --target production -t naghsh-frontend ./frontend
+docker run --rm -p 3000:3000 \
+  -e DJANGO_API_URL=http://django.internal:8000 \
+  -e DJANGO_PUBLIC_MEDIA_URL=https://media.example.com/ \
+  naghsh-frontend
+```
+
+`DJANGO_API_URL` برای همهٔ فراخوانی‌های server-to-server به Django الزامی است
+و نباید با پیشوند `NEXT_PUBLIC_` منتشر شود. `DJANGO_PUBLIC_MEDIA_URL` فقط وقتی
+لازم است که URL رسانهٔ داخلی Django باید به مبدأ عمومی مرورگر نگاشت شود.
+`PAYMENT_REDIRECT_ALLOWED_ORIGINS` نیز فقط برای مبدأهای دقیق HTTPS درگاه‌هایی
+است که `payment_url` برمی‌گردانند و برای شناسهٔ صورتحساب Bale خالی می‌ماند.
+`PORT` اختیاری است و مقدار پیش‌فرض آن `3000` است. image مقدارهای
+`NODE_ENV=production` و `HOSTNAME=0.0.0.0` را تعیین می‌کند تا cookieهای BFF در
+production دارای `Secure` باشند و standalone server روی رابط کانتینر گوش کند.
+
+مسیر `GET /api/health` پاسخ ثابت `{"status":"ok"}` و
+`Cache-Control: no-store` می‌دهد. این liveness probe عمداً Django، PostgreSQL،
+نشست کاربر و refresh-token را لمس نمی‌کند. Docker healthcheck همین مسیر را روی
+loopback کانتینر بررسی می‌کند. readiness کل فروشگاه باید جداگانه اتصال واقعی
+frontend به Django و readiness خود Django را کنترل کند.
+
+TLS در image خاتمه نمی‌یابد. ingress باید HTTPS و hostهای مجاز را enforce کند،
+درخواست مرورگر و BFF را same-origin نگه دارد و scheme/host اصلی را بدون پذیرش
+header جعلی کاربر به Next.js برساند. هیچ Compose تولیدی اضافه نشده است، چون
+دامنه، ingress، PostgreSQL و media storage تصمیم‌های محیط استقرار هستند.
+Compose ریشه همچنان فقط توسعه‌ای است و برای frontend مرحلهٔ `development` را
+می‌سازد.
+
 ## بررسی کیفیت
 
 ```bash

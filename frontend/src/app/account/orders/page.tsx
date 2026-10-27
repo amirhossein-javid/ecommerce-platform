@@ -69,7 +69,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
 
       <div className="grid min-w-0 gap-7 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-10">
         <AccountSidebar customer={session.customer} active="orders" />
-        <main className="min-w-0">
+        <div className="min-w-0">
           {orders.count === 0 ? (
             <section className="rounded-[1.5rem] border border-gold/40 bg-surface px-5 py-14 text-center shadow-card sm:px-8">
               <div className="mx-auto grid size-14 place-items-center rounded-full border-2 border-gold bg-background text-2xl text-primary" aria-hidden="true">□</div>
@@ -118,7 +118,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               ) : null}
             </>
           )}
-        </main>
+        </div>
       </div>
     </Container>
   );
