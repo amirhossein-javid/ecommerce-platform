@@ -37,9 +37,9 @@ The executable Next.js implementation includes:
   merge during login;
 - authenticated checkout and a result page for the newly created order;
 - payment initiation, allowlisted generic URL handoff, Bale invoice handoff,
-  generic return verification, and authoritative order-status refresh; and
+  generic return verification, and authoritative order-status refresh;
 - customer order history with item snapshots, pagination, owned order detail,
-  and payment resumption for backend-eligible pending orders.
+  and payment resumption for backend-eligible pending orders; and
 - approved product-review listing and aggregates, plus authenticated review
   submission, own-status display, and confirmed deletion on product detail.
 
@@ -329,7 +329,8 @@ locally calculated total in favor of the response.
   shipping snapshot, status, and creation/update timestamps.
 - `POST /api/v1/orders/{id}/cancel/` takes no body and returns `id`, `status`,
   `refund_status`, and `cancelled_at`. It is available only for states the
-  backend allows and returns `409` for a rejected transition.
+  backend allows and returns `409` for a rejected transition. This is an
+  API capability; the current storefront has no customer cancellation control.
 
 Order status values are `PENDING_PAYMENT`, `PAID`, `PROCESSING`, `SHIPPED`,
 `DELIVERED`, `CANCELLED`, and `EXPIRED`. The frontend must render these values;
@@ -429,10 +430,12 @@ and product-review flows.
   browser checkout URL. If payments must launch outside Bale, treat that as a
   new provider/product requirement rather than deriving a URL from the opaque
   identifier.
-- Select durable shared media storage or a persistent media route and ensure
-  serialized image URLs use a public origin.
+- Preserve the single-VPS `media_data` volume and public media route in
+  production Compose. Other topologies need an explicit durable storage/public
+  origin decision; multi-host media sharing is not implemented.
 - Configure trusted proxy/host/origin settings and TLS according to the
-  production deployment contract in `README.md`.
+  production contracts in [OPERATIONS.md](OPERATIONS.md) and
+  [DEPLOYMENT_VPS.md](DEPLOYMENT_VPS.md).
 - Add a shared throttle cache or ingress enforcement before multiple workers or
   replicas are used.
 

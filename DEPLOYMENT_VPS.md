@@ -3,7 +3,9 @@
 This runbook deploys the monorepo to one Ubuntu 24.04 VPS with Docker Compose,
 Caddy automatic HTTPS, a Next.js standalone frontend, Django/Gunicorn, and
 PostgreSQL. The existing `compose.yaml` remains development-only. Every command
-below runs from the repository root.
+below runs from the repository root. Configuration and runtime details
+are in [OPERATIONS.md](OPERATIONS.md); product scope and local setup are in the
+[README](README.md). This runbook is not evidence of a completed deployment.
 
 ## Public and private boundary
 
@@ -24,8 +26,9 @@ continues to own browser cookies, CSRF/origin checks, refresh rotation, cart
 credentials, and error mapping. Do not expose Django's container port or add a
 generic `/api/*` proxy rule.
 
-The `data` network is internal and contains only PostgreSQL and Django. The
-`app` bridge contains Caddy, Next.js, and Django. Django needs outbound access
+The internal `data` network connects PostgreSQL and Django; the tools-profile
+backup and maintenance containers join it when invoked. The `app` bridge
+contains Caddy, Next.js, and Django. Django needs outbound access
 to Bale, while PostgreSQL has neither an external network nor a published port.
 Caddy ignores client-provided forwarding headers by default. On requests sent
 to Next.js it overwrites the internal `X-Naghsh-Client-IP` header with the
@@ -142,8 +145,8 @@ docker compose --env-file .env.production -f compose.production.yaml \
   run --rm backend python manage.py set_bale_webhook
 ```
 
-Complete the documented Bale sandbox flow before enabling real customer
-payments.
+Complete the [development-only Bale smoke flow](OPERATIONS.md#manual-bale-test-payment-smoke-test)
+and provider acceptance QA before enabling real customer payments.
 
 ## Health and logs
 

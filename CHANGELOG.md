@@ -9,9 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [1.0.0]
 
-This is the first source release of the Naghsh-e Jahan ecommerce platform. It
-has been validated locally but has not yet been deployed to a public production
-environment.
+These notes describe the v1.0.0 source-release candidate and its implemented
+scope. The application has been validated locally; final-revision hosted CI
+and public production deployment are not claimed.
 
 ### Added
 
@@ -54,40 +54,49 @@ environment.
   and Django proxy boundary without accepting browser-supplied forwarding
   headers; authenticated throttles remain keyed by user identity.
 - Added Python production/development vulnerability audits and separate npm
-  runtime/development audits to CI. Production `npm audit --omit=dev` reports
-  zero vulnerabilities.
+  runtime/development audits to CI. Runtime npm audits fail on any severity;
+  full npm audits fail on High or Critical findings, with strict audits for
+  both Python locks.
 - Upgraded Next.js and `eslint-config-next` from `16.3.8` to `16.4.3` to address
   newly published runtime advisories, and resolved development-only Zod from
-  `4.6.5` to `4.6.7`. Current local runtime and full npm audits report zero
-  vulnerabilities.
+  `4.6.5` to `4.6.7`. Local audits passed for the verified implementation
+  baseline described below.
 - Removed the temporary CI exception for `GHSA-vfj7-8cjw-p6xm` after the
   advisory was withdrawn and disappeared from npm audit results. CI now fails
   directly on any High or Critical npm advisory and retains the all-severity
   production runtime audit.
 
+### Fixed
+
+- Prevented stale product Admin changelist saves from overwriting concurrent
+  inventory deductions or restoration while retaining status management.
+- Made authorized management status retries replay-safe using locked order state
+  and the latest actor-specific history, without repeating side effects.
+- Preserved management login rate limits and safe temporary-service errors
+  instead of reporting them as invalid credentials.
+- Preserved session cookies on transient or ambiguous refresh failures, stopped
+  protected operations without verified tokens, and retained definitive rejection
+  handling and refresh coordination.
+- Removed nested main landmarks from customer order pages.
+- Allowed the non-root frontend development user to write TypeScript build info.
+
 ### Validation
 
-- The latest local release-hardening runs completed with 761 backend tests, 68
-  frontend unit tests, and 5 BFF integration test results passing.
-- Local Ruff lint and format checks, Django system and deployment-security
-  checks, migration consistency, OpenAPI validation, ESLint, TypeScript checks
-  from a clean generated state, and the Next.js production build passed.
-- Clean locked dependency installation, Python production/development audits,
-  the npm production audit, and backend/frontend production Docker image builds
-  passed locally.
-- GitHub Actions is configured to repeat these release gates on pushes to
-  `main` and pull requests targeting `main`. A GitHub-hosted run completed
-  successfully on October 19, 2026, for commit
-  `62e35db7175981948d5f3c3b6f40252d0723d1fc`, including the backend, frontend,
-  dependency-audit, and production-image jobs. No successful GitHub-hosted run
-  is claimed yet for the later dependency-remediation changes.
-- Browser QA against the local production frontend and real
-  Django/PostgreSQL stack covered 360, 390, 768, and 1440 px without a confirmed
-  P0 or P1 finding. Known non-blocking P2 findings are nested `main` landmarks
-  on customer order pages, incomplete backward focus wrapping in the mobile
-  filter dialog, and focus not returning to the mobile-menu trigger after
-  Escape. This does not claim exhaustive WCAG, assistive-technology, or
-  cross-browser certification.
+- Local release verification of implementation commit
+  `921cedd7950ab256322413b6933325110f2a7046` passed the complete PostgreSQL-backed
+  backend suite, frontend unit/BFF integration suites, Ruff, ESLint, TypeScript,
+  Django system/deployment checks, migration consistency and OpenAPI validation.
+- Clean npm installation, Python lock validation and pip checks, both strict
+  Python dependency audits, and the explicit runtime/full npm security gates
+  passed locally. Production application images built and isolated liveness/
+  readiness smoke checks passed. These are local results, not hosted CI results.
+- GitHub Actions repeats the release gates on pushes to `main` and pull requests
+  targeting `main`. A successful run for the final release revision remains
+  unverified and is still required before publishing the source release.
+- Earlier local browser QA covered 360, 390, 768 and 1440 px without a confirmed
+  P0 or P1 finding. Mobile filter backward focus wrapping and mobile-menu focus
+  restoration after Escape remain known accessibility follow-ups. No exhaustive
+  WCAG, assistive-technology or cross-browser certification is claimed.
 
 ### Not yet production-verified
 
@@ -97,8 +106,9 @@ environment.
 - Live Bale payment success, provider inquiry, webhook delivery/replay, and the
   full Mini App return flow have not been verified against the real provider.
   No real payment is claimed to have been completed.
-- Durable production media storage, real production secrets, and capacity
-  sizing depend on the selected hosting environment.
+- The production Compose stack configures a persistent single-host media
+  volume. Backup durability, real production secrets and capacity sizing still
+  require acceptance in the selected hosting environment.
 
 ### Out of scope for 1.0.0
 
